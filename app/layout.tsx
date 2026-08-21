@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const title = "MA Radar — 한국 주식 이평 돌파 차트";
+const title = "MA BREAKOUTS — 선 넘네.. 한국 주식 이평 돌파 차트";
 const description =
-  "코스피·코스닥 이동평균 돌파 종목을 전 종목 스크리닝하고 캔들, 이평선, 거래량으로 확인합니다.";
+  "전일·전주·전월 흐름과 MA10·MA240 돌파를 한눈에 확인하는 한국 주식 차트 스크리너.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description,
       type: "website",
       locale: "ko_KR",
-      images: [{ url: imageUrl, width: 1200, height: 630, alt: "MA Radar 주식 차트" }],
+      images: [{ url: imageUrl, width: 1200, height: 630, alt: "선 넘네.. 주식 차트" }],
     },
     twitter: {
       card: "summary_large_image",

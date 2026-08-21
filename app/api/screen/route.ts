@@ -1,29 +1,73 @@
 import { NextResponse } from "next/server";
-import { screenTicker, type Ticker, type Timeframe } from "@/lib/market";
+import {
+  screenTicker,
+  type Candidate,
+  type MovingAveragePeriod,
+  type ScreeningMaPeriod,
+  type ScreeningTimeframe,
+  type Ticker,
+  type Timeframe,
+} from "@/lib/market";
 
 type ScreenRequest = {
   tickers?: Ticker[];
-  timeframe?: Timeframe;
-  maPeriod?: number;
+  timeframe?: ScreeningTimeframe;
+  maPeriod?: ScreeningMaPeriod;
 };
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as ScreenRequest;
     const tickers = Array.isArray(body.tickers) ? body.tickers.slice(0, 30) : [];
-    const timeframe = body.timeframe === "monthly" ? "monthly" : "weekly";
-    const maPeriod = body.maPeriod === 240 ? 240 : 10;
+    const timeframe: ScreeningTimeframe =
+      body.timeframe === "monthly" || body.timeframe === "both" ? body.timeframe : "weekly";
+    const maPeriod: ScreeningMaPeriod =
+      body.maPeriod === 240 || body.maPeriod === "both" ? body.maPeriod : 10;
+    const timeframes: Timeframe[] = timeframe === "both" ? ["weekly", "monthly"] : [timeframe];
+    const maPeriods: MovingAveragePeriod[] = maPeriod === "both" ? [10, 240] : [maPeriod];
     if (!tickers.length) {
       return NextResponse.json({ error: "분석할 종목이 없습니다." }, { status: 400 });
     }
-    const settled = await Promise.allSettled(
-      tickers.map((ticker) => screenTicker(ticker, timeframe, maPeriod)),
+    let matches: Candidate[] = [];
+    let failures = 0;
+
+    const groups = await Promise.all(
+      tickers.map(async (ticker) => {
+        const conditions = timeframes.flatMap((period) =>
+          maPeriods.map((movingAverage) => ({ period, movingAverage })),
+        );
+        const settled = await Promise.allSettled(
+          conditions.map(({ period, movingAverage }) =>
+            screenTicker(ticker, period, movingAverage),
+          ),
+        );
+        const groupFailures = settled.filter((result) => result.status === "rejected").length;
+        const values = settled.flatMap((result) =>
+          result.status === "fulfilled" && result.value ? [result.value] : [],
+        );
+        const allMatched = groupFailures === 0 && values.length === conditions.length;
+        const primary = values[0];
+        const match =
+          allMatched && primary
+            ? {
+                ...primary,
+                matchedTimeframes: timeframes.length > 1 ? timeframes : undefined,
+                matchedMaPeriods: maPeriods.length > 1 ? maPeriods : undefined,
+              }
+            : null;
+        return { match, groupFailures };
+      }),
     );
-    const matches = settled.flatMap((result) =>
-      result.status === "fulfilled" && result.value ? [result.value] : [],
-    );
-    const failures = settled.filter((result) => result.status === "rejected").length;
-    return NextResponse.json({ matches, failures, processed: tickers.length });
+    matches = groups.flatMap((group) => (group.match ? [group.match] : []));
+    failures = groups.reduce((sum, group) => sum + group.groupFailures, 0);
+    return NextResponse.json({
+      matches,
+      failures,
+      processed: tickers.length,
+      analyzedSignals: tickers.length * timeframes.length * maPeriods.length,
+      timeframe,
+      maPeriod,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "배치 분석에 실패했습니다." },

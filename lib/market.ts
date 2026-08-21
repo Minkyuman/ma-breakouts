@@ -1,11 +1,18 @@
 export type Market = "KOSPI" | "KOSDAQ";
 export type MarketFilter = "all" | "kospi" | "kosdaq";
+export type AssetType = "STOCK" | "ETF" | "ETN";
+export type AssetFilter = "all" | "stock" | "etp";
 export type Timeframe = "weekly" | "monthly";
+export type ChartTimeframe = "daily" | Timeframe;
+export type ScreeningTimeframe = Timeframe | "both";
+export type MovingAveragePeriod = 10 | 240;
+export type ScreeningMaPeriod = MovingAveragePeriod | "both";
 
 export type Ticker = {
   code: string;
   name: string;
   market: Market;
+  assetType: AssetType;
   marketCap: number;
   price: number;
 };
@@ -28,9 +35,17 @@ export type PeriodCandle = {
   volume: number;
 };
 
-export type ChartPoint = PeriodCandle & { ma: number | null };
+export type ChartPoint = PeriodCandle & {
+  ma5: number | null;
+  ma10: number | null;
+  ma240: number | null;
+};
 
 export type Candidate = Ticker & {
+  timeframe: Timeframe;
+  maPeriod: MovingAveragePeriod;
+  matchedTimeframes?: Timeframe[];
+  matchedMaPeriods?: MovingAveragePeriod[];
   date: string;
   previousClose: number;
   previousMa: number;
@@ -66,7 +81,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function fetchMarket(slug: Market): Promise<Ticker[]> {
+async function fetchMarket(slug: Market, assetFilter: AssetFilter): Promise<Ticker[]> {
   const pageSize = 100;
   const endpoint = (page: number) =>
     `https://m.stock.naver.com/api/stocks/marketValue/${slug}?page=${page}&pageSize=${pageSize}`;
@@ -85,8 +100,10 @@ async function fetchMarket(slug: Market): Promise<Ticker[]> {
   const tickers: Ticker[] = [];
 
   for (const row of rows) {
-    const type = String(row.stockEndType ?? "").toLowerCase();
-    if (type === "etf" || type === "etn") continue;
+    const sourceType = String(row.stockEndType ?? "").toLowerCase();
+    const assetType: AssetType = sourceType === "etf" ? "ETF" : sourceType === "etn" ? "ETN" : "STOCK";
+    if (assetFilter === "stock" && assetType !== "STOCK") continue;
+    if (assetFilter === "etp" && assetType === "STOCK") continue;
     const code = String(row.itemCode ?? "").trim().toUpperCase();
     const name = String(row.stockName ?? "").trim();
     if (!code || !name || seen.has(code)) continue;
@@ -95,6 +112,7 @@ async function fetchMarket(slug: Market): Promise<Ticker[]> {
       code,
       name,
       market: slug,
+      assetType,
       marketCap: numeric(row.marketValueRaw),
       price: numeric(row.closePrice),
     });
@@ -102,11 +120,53 @@ async function fetchMarket(slug: Market): Promise<Ticker[]> {
   return tickers;
 }
 
-export async function fetchUniverse(filter: MarketFilter): Promise<Ticker[]> {
+export async function fetchUniverse(filter: MarketFilter, assetFilter: AssetFilter = "all"): Promise<Ticker[]> {
   const markets: Market[] =
     filter === "all" ? ["KOSPI", "KOSDAQ"] : [filter.toUpperCase() as Market];
-  const groups = await Promise.all(markets.map(fetchMarket));
+  const groups = await Promise.all(markets.map((market) => fetchMarket(market, assetFilter)));
   return groups.flat().sort((a, b) => b.marketCap - a.marketCap || a.code.localeCompare(b.code));
+}
+
+let searchUniverseCache: { expiresAt: number; tickers: Ticker[] } | null = null;
+let searchUniverseRequest: Promise<Ticker[]> | null = null;
+
+async function getSearchUniverse(): Promise<Ticker[]> {
+  if (searchUniverseCache && searchUniverseCache.expiresAt > Date.now()) {
+    return searchUniverseCache.tickers;
+  }
+  if (!searchUniverseRequest) {
+    searchUniverseRequest = fetchUniverse("all", "all")
+      .then((tickers) => {
+        searchUniverseCache = { expiresAt: Date.now() + 5 * 60_000, tickers };
+        return tickers;
+      })
+      .finally(() => {
+        searchUniverseRequest = null;
+      });
+  }
+  return searchUniverseRequest;
+}
+
+export async function searchUniverse(query: string, limit = 8): Promise<Ticker[]> {
+  const normalized = query.trim().toLowerCase().replaceAll(" ", "");
+  if (!normalized) return [];
+  const tickers = await getSearchUniverse();
+  const rank = (ticker: Ticker) => {
+    const code = ticker.code.toLowerCase();
+    const name = ticker.name.toLowerCase().replaceAll(" ", "");
+    if (code === normalized || name === normalized) return 0;
+    if (code.startsWith(normalized)) return 1;
+    if (name.startsWith(normalized)) return 2;
+    return 3;
+  };
+  return tickers
+    .filter((ticker) => {
+      const code = ticker.code.toLowerCase();
+      const name = ticker.name.toLowerCase().replaceAll(" ", "");
+      return code.includes(normalized) || name.includes(normalized);
+    })
+    .sort((a, b) => rank(a) - rank(b) || b.marketCap - a.marketCap || a.code.localeCompare(b.code))
+    .slice(0, Math.max(1, Math.min(limit, 20)));
 }
 
 export function historyYears(timeframe: Timeframe, maPeriod: number): number {
@@ -141,7 +201,7 @@ function isoWeekKey(value: Date): string {
   return `${date.getUTCFullYear()}-${String(week).padStart(2, "0")}`;
 }
 
-export function aggregateCandles(rows: DailyRow[], timeframe: Timeframe): PeriodCandle[] {
+export function aggregateCandles(rows: DailyRow[], timeframe: ChartTimeframe): PeriodCandle[] {
   const parsed = rows
     .map((row) => {
       const raw = String(row.localDate ?? "");
@@ -170,7 +230,9 @@ export function aggregateCandles(rows: DailyRow[], timeframe: Timeframe): Period
   const grouped = new Map<string, typeof parsed>();
   for (const row of parsed) {
     const key =
-      timeframe === "weekly"
+      timeframe === "daily"
+        ? row.dateText
+        : timeframe === "weekly"
         ? isoWeekKey(row.date)
         : `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, "0")}`;
     const group = grouped.get(key) ?? [];
@@ -195,7 +257,8 @@ function average(values: number[]): number {
 export function screenCandles(
   ticker: Ticker,
   candles: PeriodCandle[],
-  maPeriod: number,
+  maPeriod: MovingAveragePeriod,
+  timeframe: Timeframe,
 ): Candidate | null {
   if (candles.length < maPeriod + 1) return null;
   const previous = candles.at(-2)!;
@@ -219,6 +282,8 @@ export function screenCandles(
 
   return {
     ...ticker,
+    timeframe,
+    maPeriod,
     date: current.date,
     previousClose: previous.close,
     previousMa,
@@ -233,21 +298,25 @@ export function screenCandles(
   };
 }
 
-export function withMovingAverage(candles: PeriodCandle[], maPeriod: number): ChartPoint[] {
+function movingAverageAt(candles: PeriodCandle[], index: number, period: number): number | null {
+  if (index + 1 < period) return null;
+  return average(candles.slice(index + 1 - period, index + 1).map((row) => row.close));
+}
+
+export function withMovingAverages(candles: PeriodCandle[]): ChartPoint[] {
   return candles.map((candle, index) => ({
     ...candle,
-    ma:
-      index + 1 >= maPeriod
-        ? average(candles.slice(index + 1 - maPeriod, index + 1).map((row) => row.close))
-        : null,
+    ma5: movingAverageAt(candles, index, 5),
+    ma10: movingAverageAt(candles, index, 10),
+    ma240: movingAverageAt(candles, index, 240),
   }));
 }
 
 export async function screenTicker(
   ticker: Ticker,
   timeframe: Timeframe,
-  maPeriod: number,
+  maPeriod: MovingAveragePeriod,
 ): Promise<Candidate | null> {
   const daily = await fetchDailyChart(ticker.code, historyYears(timeframe, maPeriod));
-  return screenCandles(ticker, aggregateCandles(daily, timeframe), maPeriod);
+  return screenCandles(ticker, aggregateCandles(daily, timeframe), maPeriod, timeframe);
 }

@@ -15,26 +15,70 @@ async function render() {
   );
 }
 
-test("server-renders the MA Radar product shell", async () => {
+test("server-renders the 선 넘네 product shell", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /MA Radar/);
+  assert.match(html, /선 넘네\.\./);
+  assert.match(html, /MA BREAKOUTS/);
+  assert.match(html, /brand-mark\.png/);
   assert.match(html, /한국 주식 이평 돌파 차트/);
   assert.match(html, /전 종목 새로 스캔/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
 test("ships product metadata and removes the disposable preview", async () => {
-  const [layout, page, packageJson] = await Promise.all([
+  const [layout, page, styles, packageJson] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
-  assert.match(layout, /MA Radar/);
+  assert.match(layout, /선 넘네\.\./);
   assert.match(layout, /openGraph/);
   assert.match(page, /ChartCanvas/);
+  assert.match(page, /brand-logo/);
+  assert.match(page, /MA BREAKOUTS/);
+  assert.match(page, /ctx\.lineWidth = 0\.8/);
+  assert.match(page, /MA 5/);
+  assert.match(page, /MA 10/);
+  assert.match(page, /MA 240/);
+  assert.match(page, /legend-ma240/);
+  assert.match(page, /readout-stat/);
+  assert.match(page, /<em>시가<\/em>/);
+  assert.match(page, /data-candle-direction/);
+  assert.match(page, /양봉/);
+  assert.match(page, /음봉/);
+  assert.match(page, /candleDownColor/);
+  assert.match(styles, /--candle-down:\s*#2f6fd6/);
+  assert.match(page, /직전 봉 대비/);
+  assert.match(page, /priceChangePct/);
+  assert.match(page, /ETF·ETN/);
+  assert.match(page, /assetType/);
+  assert.match(page, /주&월/);
+  assert.match(page, /AND 돌파 종목/);
+  assert.match(page, /chart-period-buttons/);
+  assert.match(page, /일봉 보기/);
+  assert.match(page, /ChartTimeframe/);
+  assert.match(page, /chart-range-control/);
+  assert.match(page, /차트 표시 봉 수/);
+  assert.match(page, /10&240/);
+  assert.match(page, /detailCurrentMa10/);
+  assert.match(page, /detailCurrentMa240/);
+  assert.doesNotMatch(page, /chart-ma-buttons|MA10 기준|MA240 기준/);
+  assert.match(page, /현재가/);
+  assert.match(page, /current-price-change/);
+  assert.match(page, /priceChanges/);
+  assert.match(page, /price-change-item/);
+  assert.match(page, /전일/);
+  assert.match(page, /전주/);
+  assert.match(page, /전월/);
+  assert.match(page, /latestPrices/);
+  assert.match(page, /global-stock-search/);
+  assert.match(page, /전체 종목명 또는 코드 검색/);
+  assert.match(page, /\/api\/search\?query=/);
+  assert.match(page, /ScreeningTimeframe/);
   assert.match(page, /runFullScan/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
@@ -42,5 +86,6 @@ test("ships product metadata and removes the disposable preview", async () => {
   await access(new URL("../app/api/screen/route.ts", import.meta.url));
   await access(new URL("../app/api/chart/route.ts", import.meta.url));
   await access(new URL("../app/api/universe/route.ts", import.meta.url));
+  await access(new URL("../app/api/search/route.ts", import.meta.url));
   await access(root);
 });
