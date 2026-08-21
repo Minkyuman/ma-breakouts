@@ -76,6 +76,16 @@ tests/                     서버 렌더링 회귀 테스트
 
 이 프로젝트는 [vinext](https://github.com/cloudflare/vinext) 기반이며, `.openai/hosting.json`과 `vite.config.ts`가 로컬·Sites 실행 환경의 바인딩 구성을 담당합니다. 현재 스크리너 데이터는 외부 시장 API에서 조회하므로 별도 D1 데이터베이스가 없어도 실행됩니다.
 
+## Vercel 배포
+
+`vercel.json`과 Nitro Vercel 어댑터가 포함되어 있어 API 라우트를 포함한 서버 렌더링 배포가 가능합니다. Vercel 대시보드에서 이 저장소를 연결하거나 CLI로 배포합니다.
+
+```bash
+npx vercel --prod
+```
+
+Vercel 환경에서는 `NITRO_PRESET=vercel`로 빌드되어 `.vercel/output`에 정적 자산과 서버 함수를 생성합니다.
+
 ## 라이선스·투자 주의
 
 이 프로젝트는 개인용 분석 도구 예제입니다. 데이터 지연·누락 가능성이 있으며, 스크리닝 결과는 투자 권유나 수익을 보장하지 않습니다.
