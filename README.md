@@ -2,6 +2,12 @@
 
 KOSPI·KOSDAQ 종목을 대상으로 이동평균선 상향돌파를 찾고, 캔들 차트로 확인하는 웹 스크리너입니다.
 
+## 프로덕션 서비스
+
+- 서비스: [stock-chart-screener-web.vercel.app](https://stock-chart-screener-web.vercel.app)
+- 호스팅: Vercel
+- 상태: 프로덕션 배포 완료 — 화면과 `/api/search` 응답 확인
+
 ## 주요 기능
 
 - 주봉·월봉 MA10 또는 MA240 상향돌파 스크리닝
@@ -78,13 +84,13 @@ tests/                     서버 렌더링 회귀 테스트
 
 ## Vercel 배포
 
-`vercel.json`과 Nitro Vercel 어댑터가 포함되어 있어 API 라우트를 포함한 서버 렌더링 배포가 가능합니다. Vercel 대시보드에서 이 저장소를 연결하거나 CLI로 배포합니다.
+`vercel.json`과 Nitro Vercel 어댑터가 포함되어 있어 API 라우트를 포함한 서버 렌더링 배포가 가능합니다. Vercel 환경에서는 `NITRO_PRESET=vercel`로 빌드되어 `.vercel/output`에 정적 자산과 서버 함수를 생성합니다.
 
 ```bash
 npx vercel --prod
 ```
 
-Vercel 환경에서는 `NITRO_PRESET=vercel`로 빌드되어 `.vercel/output`에 정적 자산과 서버 함수를 생성합니다.
+현재 프로덕션은 Vercel CLI로 배포되어 있습니다. GitHub 푸시마다 자동 배포하려면 Vercel 대시보드에서 GitHub Login Connection을 추가한 뒤 이 저장소를 Vercel 프로젝트에 연결하고, 사용할 프로덕션 브랜치를 지정하면 됩니다.
 
 ## 라이선스·투자 주의
 
