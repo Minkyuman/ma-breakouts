@@ -730,7 +730,7 @@ select:focus-visible {
 
 .rank {
   color: #9ba19c;
-  font: 600 10px var(--font-geist-mono), monospace;
+  font: 600 11px var(--font-geist-mono), monospace;
 }
 
 .candidate-main,
@@ -747,7 +747,8 @@ select:focus-visible {
 
 .candidate-main strong {
   overflow: hidden;
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -778,13 +779,14 @@ select:focus-visible {
 .candidate-metric small {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
+  font-weight: 570;
 }
 
 .candidate-metric .krw-conversion {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .krw-current-price {
@@ -825,7 +827,7 @@ select:focus-visible {
   border-radius: 5px;
   background: var(--green-soft);
   color: var(--green);
-  font-size: 8px;
+  font-size: 9px;
   font-style: normal;
   font-weight: 750;
   letter-spacing: -0.02em;
@@ -837,7 +839,7 @@ select:focus-visible {
   border-radius: 5px;
   background: linear-gradient(145deg, #245b4d, var(--green-deep));
   color: white;
-  font-size: 8px;
+  font-size: 9px;
   font-style: normal;
   font-weight: 750;
   letter-spacing: -0.02em;
@@ -859,7 +861,7 @@ select:focus-visible {
 
 .candidate-metric strong {
   color: var(--ink);
-  font: 700 11px var(--font-geist-mono), monospace;
+  font: 700 14px var(--font-geist-mono), monospace;
 }
 
 .candidate-metric small {
@@ -922,13 +924,13 @@ select:focus-visible {
 
 .security-title > span:not(.market-tag):not(.asset-tag):not(.direct-view-tag) {
   color: var(--muted);
-  font: 600 11px var(--font-geist-mono), monospace;
+  font: 600 14px var(--font-geist-mono), monospace;
 }
 
 .market-tag {
   padding: 4px 7px;
   border-radius: 999px;
-  font: 700 9px var(--font-geist-mono), monospace;
+  font: 700 11px var(--font-geist-mono), monospace;
 }
 
 .asset-tag {
@@ -937,7 +939,7 @@ select:focus-visible {
   border-radius: 999px;
   background: var(--green-soft);
   color: var(--green);
-  font: 700 9px var(--font-geist-mono), monospace;
+  font: 700 11px var(--font-geist-mono), monospace;
 }
 
 .asset-tag.etf {
@@ -975,7 +977,8 @@ select:focus-visible {
 .security-header p {
   margin: 7px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 560;
 }
 
 .security-price {
@@ -987,7 +990,7 @@ select:focus-visible {
   display: block;
   margin-bottom: 6px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.08em;
 }
@@ -999,7 +1002,7 @@ select:focus-visible {
   gap: 8px;
   margin: 7px 0 0;
   color: var(--muted);
-  font: 560 10px/1.2 var(--font-geist-mono), monospace;
+  font: 560 12px/1.2 var(--font-geist-mono), monospace;
   letter-spacing: -0.02em;
 }
 
@@ -1017,7 +1020,7 @@ select:focus-visible {
 }
 
 .price-change-item b {
-  font: 680 10px/1 var(--font-geist-mono), monospace;
+  font: 680 12px/1 var(--font-geist-mono), monospace;
 }
 
 .price-change-item.positive b {
@@ -1036,7 +1039,7 @@ select:focus-visible {
 .security-price span {
   margin-left: 5px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .metric-grid {
@@ -1060,19 +1063,20 @@ select:focus-visible {
   display: block;
   margin-bottom: 7px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 570;
   letter-spacing: 0.03em;
 }
 
 .metric-grid strong {
-  font: 650 14px var(--font-geist-mono), monospace;
+  font: 650 17px var(--font-geist-mono), monospace;
 }
 
 .metric-grid .ma-metric small {
   display: block;
   margin-top: 5px;
   color: var(--muted);
-  font: 550 9px var(--font-geist-mono), monospace;
+  font: 580 11px var(--font-geist-mono), monospace;
 }
 
 .metric-grid .ma-metric small.positive {
@@ -1279,7 +1283,7 @@ select:focus-visible {
 
 .chart-readout em {
   color: #98a19c;
-  font-size: 9px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -1287,7 +1291,7 @@ select:focus-visible {
 
 .chart-readout b {
   color: #3f4844;
-  font: 640 10px/1 var(--font-geist-mono), monospace;
+  font: 640 12px/1 var(--font-geist-mono), monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.025em;
 }
@@ -1305,7 +1309,7 @@ select:focus-visible {
   border-radius: 5px;
   background: #f3f4ef;
   color: #626d67;
-  font: 650 9px/1 var(--font-geist-mono), monospace;
+  font: 650 11px/1 var(--font-geist-mono), monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
@@ -1448,14 +1452,14 @@ select:focus-visible {
 }
 
 .evidence-card strong {
-  font: 650 13px var(--font-geist-mono), monospace;
+  font: 650 16px var(--font-geist-mono), monospace;
 }
 
 .evidence-card small,
 .volume-card small {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .evidence-card .price-change {
@@ -1494,7 +1498,7 @@ select:focus-visible {
 }
 
 .volume-card strong {
-  font: 650 12px var(--font-geist-mono), monospace;
+  font: 650 15px var(--font-geist-mono), monospace;
 }
 
 .volume-card em {
