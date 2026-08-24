@@ -131,7 +131,7 @@ type PriceChangeSummary = {
 
 type PriceChangePeriod = "daily" | "weekly" | "monthly";
 type PriceChangeSet = Record<PriceChangePeriod, PriceChangeSummary | null>;
-type ClassificationFilter = { kind: "market" | "sector" | "theme"; value: string } | null;
+type ClassificationFilter = { kind: "market" | "sector" | "theme"; value: string };
 
 const EMPTY_PRICE_CHANGES: PriceChangeSet = { daily: null, weekly: null, monthly: null };
 const CHART_RANGE_MIN = 10;
@@ -504,7 +504,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [volumeFilter, setVolumeFilter] = useState("all");
-  const [classificationFilter, setClassificationFilter] = useState<ClassificationFilter>(null);
+  const [classificationFilters, setClassificationFilters] = useState<ClassificationFilter[]>([]);
   const [range, setRange] = useState(80);
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [priceChanges, setPriceChanges] = useState<PriceChangeSet>(EMPTY_PRICE_CHANGES);
@@ -538,12 +538,29 @@ export default function Home() {
       if (normalized && !`${item.name} ${item.code}`.toLowerCase().includes(normalized)) return false;
       if (statusFilter !== "all" && item.status !== statusFilter) return false;
       if (volumeFilter !== "all" && item.volumeStatus !== volumeFilter) return false;
-      if (classificationFilter?.kind === "market" && item.market !== classificationFilter.value) return false;
-      if (classificationFilter?.kind === "sector" && item.sector !== classificationFilter.value) return false;
-      if (classificationFilter?.kind === "theme" && !item.themes?.includes(classificationFilter.value)) return false;
+      const market = classificationFilters.find((filter) => filter.kind === "market");
+      const sector = classificationFilters.find((filter) => filter.kind === "sector");
+      const themes = classificationFilters.filter((filter) => filter.kind === "theme");
+      if (market && item.market !== market.value) return false;
+      if (sector && item.sector !== sector.value) return false;
+      if (themes.some((filter) => !item.themes?.includes(filter.value))) return false;
       return true;
     });
-  }, [results, query, statusFilter, volumeFilter, classificationFilter]);
+  }, [results, query, statusFilter, volumeFilter, classificationFilters]);
+
+  const hasClassificationFilter = (kind: ClassificationFilter["kind"], value: string) =>
+    classificationFilters.some((filter) => filter.kind === kind && filter.value === value);
+  const toggleClassificationFilter = (next: ClassificationFilter) => {
+    setClassificationFilters((current) => {
+      const exists = current.some((filter) => filter.kind === next.kind && filter.value === next.value);
+      if (exists) return current.filter((filter) => !(filter.kind === next.kind && filter.value === next.value));
+      // Market and sector are mutually exclusive dimensions; themes can be combined.
+      const retained = next.kind === "market" || next.kind === "sector"
+        ? current.filter((filter) => filter.kind !== next.kind)
+        : current;
+      return [...retained, next];
+    });
+  };
 
   const selectedCandidate = results.find((item) => candidateKey(item) === selectedKey) ?? filtered[0] ?? results[0];
   const activeMarketWatch = MARKET_WATCHES.find((item) => item.id === marketWatchId) ?? MARKET_WATCHES[0];
@@ -636,7 +653,7 @@ export default function Home() {
     setDirectTicker(null);
     setScanning(true);
     setResults([]);
-    setClassificationFilter(null);
+    setClassificationFilters([]);
     setProgress({ done: 0, total: 0, failures: 0 });
     setMessage("시장 종목 목록을 불러오는 중");
     try {
@@ -991,12 +1008,17 @@ export default function Home() {
               <option value="감소">거래량 감소</option>
             </select>
           </div>
-          {classificationFilter && (
+          {classificationFilters.length > 0 && (
             <div className="classification-filter">
-              <span>{classificationFilter.kind === "market" ? "시장" : classificationFilter.kind === "sector" ? "섹터" : "테마"}</span>
-              <button type="button" onClick={() => setClassificationFilter(null)}>
-                {classificationFilter.value} <b>×</b>
-              </button>
+              <span>선택</span>
+              <div>
+                {classificationFilters.map((filter) => (
+                  <button key={`${filter.kind}:${filter.value}`} type="button" onClick={() => toggleClassificationFilter(filter)}>
+                    {filter.value} <b>×</b>
+                  </button>
+                ))}
+                <button className="clear-all" type="button" onClick={() => setClassificationFilters([])}>전체 해제</button>
+              </div>
             </div>
           )}
           <div className="candidate-list">
@@ -1028,29 +1050,29 @@ export default function Home() {
                   </span>
                   <span className="candidate-classification" aria-label={`${item.name} 섹터와 테마`}>
                     <span
-                      className={`candidate-market-tag ${item.market.toLowerCase()}${classificationFilter?.kind === "market" && classificationFilter.value === item.market ? " active" : ""}`}
+                      className={`candidate-market-tag ${item.market.toLowerCase()}${hasClassificationFilter("market", item.market) ? " active" : ""}`}
                       role="button"
                       tabIndex={0}
-                      onClick={(event) => { event.stopPropagation(); setClassificationFilter({ kind: "market", value: item.market }); }}
-                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setClassificationFilter({ kind: "market", value: item.market }); } }}
+                      onClick={(event) => { event.stopPropagation(); toggleClassificationFilter({ kind: "market", value: item.market }); }}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleClassificationFilter({ kind: "market", value: item.market }); } }}
                     >{item.market}</span>
                     {item.sector ? (
                       <span
-                        className={`candidate-sector-tag${classificationFilter?.kind === "sector" && classificationFilter.value === item.sector ? " active" : ""}`}
+                        className={`candidate-sector-tag${hasClassificationFilter("sector", item.sector) ? " active" : ""}`}
                         role="button"
                         tabIndex={0}
-                        onClick={(event) => { event.stopPropagation(); setClassificationFilter({ kind: "sector", value: item.sector! }); }}
-                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setClassificationFilter({ kind: "sector", value: item.sector! }); } }}
+                        onClick={(event) => { event.stopPropagation(); toggleClassificationFilter({ kind: "sector", value: item.sector! }); }}
+                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleClassificationFilter({ kind: "sector", value: item.sector! }); } }}
                       >{item.sector}</span>
                     ) : <span className="candidate-sector-tag pending">섹터 확인 중</span>}
                     {item.themes?.slice(0, 2).map((theme) => (
                       <span
                         key={theme}
-                        className={`candidate-theme-tag${classificationFilter?.kind === "theme" && classificationFilter.value === theme ? " active" : ""}`}
+                        className={`candidate-theme-tag${hasClassificationFilter("theme", theme) ? " active" : ""}`}
                         role="button"
                         tabIndex={0}
-                        onClick={(event) => { event.stopPropagation(); setClassificationFilter({ kind: "theme", value: theme }); }}
-                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setClassificationFilter({ kind: "theme", value: theme }); } }}
+                        onClick={(event) => { event.stopPropagation(); toggleClassificationFilter({ kind: "theme", value: theme }); }}
+                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleClassificationFilter({ kind: "theme", value: theme }); } }}
                       >{theme}</span>
                     ))}
                   </span>

@@ -420,11 +420,22 @@ select:focus-visible {
 
 .classification-filter {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 7px;
   padding: 0 15px 10px;
   color: var(--muted);
   font-size: 10px;
+}
+
+.classification-filter > span {
+  padding-top: 5px;
+}
+
+.classification-filter > div {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
 .classification-filter button {
@@ -443,6 +454,13 @@ select:focus-visible {
 .classification-filter button b {
   font-size: 13px;
   line-height: 0.8;
+}
+
+.classification-filter button.clear-all {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .select-field select {
