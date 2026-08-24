@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   screenTicker,
+  fetchUsdKrwRate,
   type Candidate,
   type MovingAveragePeriod,
   type ScreeningMaPeriod,
@@ -60,6 +61,13 @@ export async function POST(request: Request) {
     );
     matches = groups.flatMap((group) => (group.match ? [group.match] : []));
     failures = groups.reduce((sum, group) => sum + group.groupFailures, 0);
+    const hasUsdMatches = matches.some((item) => item.currency === "USD");
+    const exchangeRate = hasUsdMatches ? await fetchUsdKrwRate() : undefined;
+    if (exchangeRate) {
+      matches = matches.map((item) => item.currency === "USD"
+        ? { ...item, exchangeRate, krwPrice: item.price * exchangeRate }
+        : item);
+    }
     return NextResponse.json({
       matches,
       failures,
@@ -67,6 +75,7 @@ export async function POST(request: Request) {
       analyzedSignals: tickers.length * timeframes.length * maPeriods.length,
       timeframe,
       maPeriod,
+      exchangeRate,
     });
   } catch (error) {
     return NextResponse.json(

@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
-import { fetchUniverse, type AssetFilter, type MarketFilter } from "@/lib/market";
+import { fetchUniverse, fetchUsUniverse, type AssetFilter, type MarketFilter, type Region } from "@/lib/market";
 
 export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
+    const region: Region = params.get("region") === "us" ? "us" : "kr";
     const value = params.get("market") ?? "all";
-    const market: MarketFilter = ["all", "kospi", "kosdaq"].includes(value)
+    const allowedMarkets = region === "us" ? ["all", "nasdaq", "nyse", "amex"] : ["all", "kospi", "kosdaq"];
+    const market: MarketFilter = allowedMarkets.includes(value)
       ? (value as MarketFilter)
       : "all";
     const assetValue = params.get("asset") ?? "all";
     const asset: AssetFilter = ["all", "stock", "etp"].includes(assetValue)
       ? (assetValue as AssetFilter)
       : "all";
-    const tickers = await fetchUniverse(market, asset);
-    return NextResponse.json({ tickers, count: tickers.length, market, asset });
+    const tickers = region === "us" ? await fetchUsUniverse(market, asset) : await fetchUniverse(market, asset);
+    return NextResponse.json({ tickers, count: tickers.length, market, asset, region, scope: region === "us" ? "거래소별 시가총액 상위 1,000 보통주" : "전 종목" });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "종목 목록을 불러오지 못했습니다." },

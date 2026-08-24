@@ -347,8 +347,8 @@ select:focus-visible {
 }
 
 .control-deck {
-  display: grid;
-  grid-template-columns: auto auto 118px 138px auto minmax(170px, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 16px;
   margin: 16px 0 12px;
@@ -358,6 +358,11 @@ select:focus-visible {
   background: rgba(255, 255, 252, 0.84);
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(14px);
+}
+
+.market-region-control {
+  padding-right: 2px;
+  border-right: 1px solid var(--line);
 }
 
 .control-group {
@@ -752,6 +757,27 @@ select:focus-visible {
   margin-top: 4px;
   color: var(--muted);
   font-size: 9px;
+}
+
+.candidate-metric .krw-conversion {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.krw-current-price {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.krw-current-price em {
+  margin-left: 5px;
+  color: #8a928d;
+  font: 600 8px var(--font-geist-mono), monospace;
+  font-style: normal;
 }
 
 .candidate-main > small {

@@ -7,6 +7,7 @@ import type {
   ChartTimeframe,
   ChartPoint,
   MarketFilter,
+  Region,
   ScreeningMaPeriod,
   ScreeningTimeframe,
   Ticker,
@@ -88,6 +89,11 @@ const number = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 
 function formatPrice(value: number) {
   return number.format(Math.round(value));
+}
+
+function formatUsd(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
 }
 
 function formatMaybePrice(value: number | null | undefined) {
@@ -480,6 +486,7 @@ function ChartCanvas({
 }
 
 export default function Home() {
+  const [region, setRegion] = useState<Region>("kr");
   const [timeframe, setTimeframe] = useState<ScreeningTimeframe>("weekly");
   const [maPeriod, setMaPeriod] = useState<ScreeningMaPeriod>(240);
   const [market, setMarket] = useState<MarketFilter>("all");
@@ -498,6 +505,7 @@ export default function Home() {
   const [range, setRange] = useState(80);
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [priceChanges, setPriceChanges] = useState<PriceChangeSet>(EMPTY_PRICE_CHANGES);
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [latestPrices, setLatestPrices] = useState<Record<string, number>>({});
   const [chartLoading, setChartLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -580,17 +588,18 @@ export default function Home() {
     setPriceChanges(EMPTY_PRICE_CHANGES);
     const endpoint = isMarketOverview
       ? `/api/market-chart?id=${encodeURIComponent(activeMarketWatch.id)}&timeframe=${chartTimeframe}`
-      : `/api/chart?code=${selected.code}&timeframe=${chartTimeframe}`;
+      : `/api/chart?code=${selected.code}&market=${selected.market}&timeframe=${chartTimeframe}`;
     fetch(endpoint, {
       signal: controller.signal,
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("차트를 불러오지 못했습니다.");
-        return response.json() as Promise<{ points: ChartPoint[]; changes?: PriceChangeSet }>;
+        return response.json() as Promise<{ points: ChartPoint[]; changes?: PriceChangeSet; exchangeRate?: number }>;
       })
       .then((payload) => {
         setChart(payload.points);
         setPriceChanges(payload.changes ?? EMPTY_PRICE_CHANGES);
+        setExchangeRate(payload.exchangeRate ?? selected.exchangeRate ?? null);
         const latest = payload.points.at(-1);
         if (latest) {
           setLatestPrices((current) =>
@@ -617,7 +626,7 @@ export default function Home() {
     setProgress({ done: 0, total: 0, failures: 0 });
     setMessage("시장 종목 목록을 불러오는 중");
     try {
-      const universeResponse = await fetch(`/api/universe?market=${market}&asset=${asset}`);
+      const universeResponse = await fetch(`/api/universe?region=${region}&market=${market}&asset=${asset}`);
       if (!universeResponse.ok) throw new Error("시장 종목 목록을 불러오지 못했습니다.");
       const universePayload = (await universeResponse.json()) as { tickers: Ticker[] };
       const tickers = universePayload.tickers;
@@ -625,7 +634,7 @@ export default function Home() {
       const timeframeLabel = timeframe === "both" ? "주봉·월봉 AND" : timeframe === "weekly" ? "주봉" : "월봉";
       const maLabel = maPeriod === "both" ? "10·240이평 AND" : `${maPeriod}이평`;
       const conditionCount = (timeframe === "both" ? 2 : 1) * (maPeriod === "both" ? 2 : 1);
-      setMessage(`${tickers.length.toLocaleString("ko-KR")}종목 · ${timeframeLabel} · ${maLabel} 분석 중`);
+      setMessage(`${tickers.length.toLocaleString("ko-KR")}종목 · ${timeframeLabel} · ${maLabel} 분석 중${region === "us" ? " · 거래소별 시총 상위 1,000 보통주" : ""}`);
       const batches: Ticker[][] = [];
       const batchSize = conditionCount >= 4 ? 8 : conditionCount === 2 ? 12 : 24;
       for (let index = 0; index < tickers.length; index += batchSize) batches.push(tickers.slice(index, index + batchSize));
@@ -648,8 +657,10 @@ export default function Home() {
             const payload = (await response.json()) as {
               matches: Candidate[];
               failures: number;
+              exchangeRate?: number;
             };
             matches.push(...payload.matches);
+            if (payload.exchangeRate) setExchangeRate(payload.exchangeRate);
             failures += payload.failures;
           }
           done += batch.length;
@@ -700,7 +711,9 @@ export default function Home() {
     chartTimeframe === "daily" ? "일봉" : chartTimeframe === "weekly" ? "주봉" : "월봉";
   const chartMaUnit =
     chartTimeframe === "daily" ? "일" : chartTimeframe === "weekly" ? "주" : "개월";
-  const priceUnit = isMarketOverview ? activeMarketWatch.unit : "원";
+  const isUsdSecurity = !isMarketOverview && selected.currency === "USD";
+  const priceUnit = isMarketOverview ? activeMarketWatch.unit : isUsdSecurity ? "USD" : "원";
+  const appliedExchangeRate = exchangeRate ?? selected.exchangeRate ?? null;
   const hasScreenResults = results.length > 0 || scanning;
   const progressPct = progress.total ? Math.min(100, (progress.done / progress.total) * 100) : 0;
   const currentPeriod = chart.at(-1);
@@ -839,7 +852,7 @@ export default function Home() {
                       <strong>{ticker.name}</strong>
                       <small>{ticker.code} · {ticker.market} · {ticker.assetType === "STOCK" ? "주식" : ticker.assetType}</small>
                     </span>
-                    <em>{formatPrice(ticker.price)}원</em>
+                    <em>{ticker.currency === "USD" ? formatUsd(ticker.price) : `${formatPrice(ticker.price)}원`}</em>
                   </button>
                 ))}
                 {!stockSearching && !stockMatches.length && <p>일치하는 종목이 없습니다.</p>}
@@ -855,6 +868,13 @@ export default function Home() {
       </header>
 
       <section className="control-deck" aria-label="스크리닝 조건">
+        <div className="control-group market-region-control">
+          <span className="control-label">국가</span>
+          <div className="segmented">
+            <button className={region === "kr" ? "active" : ""} onClick={() => { setRegion("kr"); setMarket("all"); setAsset("all"); }}>한국</button>
+            <button className={region === "us" ? "active" : ""} onClick={() => { setRegion("us"); setMarket("all"); setAsset("stock"); }}>미국</button>
+          </div>
+        </div>
         <div className="control-group">
           <span className="control-label">봉</span>
           <div className="segmented">
@@ -892,18 +912,17 @@ export default function Home() {
           <span>시장</span>
           <select value={market} onChange={(event) => setMarket(event.target.value as MarketFilter)}>
             <option value="all">전체</option>
-            <option value="kospi">KOSPI</option>
-            <option value="kosdaq">KOSDAQ</option>
+            {region === "kr" ? <><option value="kospi">KOSPI</option><option value="kosdaq">KOSDAQ</option></> : <><option value="nasdaq">NASDAQ</option><option value="nyse">NYSE</option><option value="amex">AMEX</option></>}
           </select>
         </label>
-        <label className="select-field asset-select">
+        {region === "kr" && <label className="select-field asset-select">
           <span>종목 유형</span>
           <select value={asset} onChange={(event) => setAsset(event.target.value as AssetFilter)}>
             <option value="all">전체</option>
             <option value="stock">일반주식</option>
             <option value="etp">ETF·ETN</option>
           </select>
-        </label>
+        </label>}
         <div className="scan-action">
           <button className="primary-button" onClick={runFullScan} disabled={scanning}>
             {scanning ? "분석 중…" : "전 종목 새로 스캔"}
@@ -989,7 +1008,8 @@ export default function Home() {
                   </small>
                 </span>
                 <span className="candidate-metric">
-                  <strong>{formatPrice(latestPrices[item.code] ?? item.price ?? item.close)}원</strong>
+                  <strong>{item.currency === "USD" ? formatUsd(latestPrices[item.code] ?? item.price ?? item.close) : `${formatPrice(latestPrices[item.code] ?? item.price ?? item.close)}원`}</strong>
+                  {item.currency === "USD" && item.exchangeRate && <small className="krw-conversion">약 {formatPrice((latestPrices[item.code] ?? item.price ?? item.close) * item.exchangeRate)}원</small>}
                   <small className={item.gapPct < 0 ? "down" : "up"}>
                     이격{item.matchedTimeframes?.length === 2 ? "(주)" : ""} {signed(item.gapPct, 2)}
                   </small>
@@ -1030,10 +1050,10 @@ export default function Home() {
                     ) : (
                     <a
                       className="security-stock-link"
-                      href={`https://finance.naver.com/item/main.naver?code=${encodeURIComponent(selected.code)}`}
+                      href={selected.currency === "USD" ? `https://finance.yahoo.com/quote/${encodeURIComponent(selected.code)}` : `https://finance.naver.com/item/main.naver?code=${encodeURIComponent(selected.code)}`}
                       target="_blank"
                       rel="noreferrer"
-                      aria-label={`${selected.name} 네이버 종목 페이지 열기`}
+                      aria-label={`${selected.name} 종목 페이지 열기`}
                     >
                       <h2>{selected.name}</h2>
                     </a>
@@ -1052,9 +1072,10 @@ export default function Home() {
                 <div className="security-price">
                   <small>현재가</small>
                   <div>
-                    <strong>{formatPrice(detailCurrentClose)}</strong>
-                    <span>{priceUnit}</span>
+                    <strong>{isUsdSecurity ? formatUsd(detailCurrentClose) : formatPrice(detailCurrentClose)}</strong>
+                    {!isUsdSecurity && <span>{priceUnit}</span>}
                   </div>
+                  {isUsdSecurity && appliedExchangeRate && <small className="krw-current-price">약 {formatPrice(detailCurrentClose * appliedExchangeRate)}원 <em>USD/KRW {appliedExchangeRate.toFixed(2)}</em></small>}
                   <small className="current-price-change" aria-label="기간별 현재가 변동">
                     {(["daily", "weekly", "monthly"] as PriceChangePeriod[]).map((period) => {
                       const change = priceChanges[period];
@@ -1064,7 +1085,7 @@ export default function Home() {
                         <span
                           key={period}
                           className={`price-change-item ${tone}`}
-                          title={change ? `${label} 대비 ${signedPrice(change.change)}원 · ${signed(change.changePct, 2)}` : `${label} 대비 계산 중`}
+                          title={change ? `${label} 대비 ${isUsdSecurity ? formatUsd(change.change) : `${signedPrice(change.change)}원`} · ${signed(change.changePct, 2)}` : `${label} 대비 계산 중`}
                         >
                           {label} <b>{change ? signed(change.changePct, 2) : "—"}</b>
                         </span>

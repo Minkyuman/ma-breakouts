@@ -1,5 +1,6 @@
-export type Market = "KOSPI" | "KOSDAQ";
-export type MarketFilter = "all" | "kospi" | "kosdaq";
+export type Region = "kr" | "us";
+export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | "NYSE" | "AMEX";
+export type MarketFilter = "all" | "kospi" | "kosdaq" | "nasdaq" | "nyse" | "amex";
 export type AssetType = "STOCK" | "ETF" | "ETN";
 export type AssetFilter = "all" | "stock" | "etp";
 export type Timeframe = "weekly" | "monthly";
@@ -15,6 +16,10 @@ export type Ticker = {
   assetType: AssetType;
   marketCap: number;
   price: number;
+  currency?: "KRW" | "USD";
+  /** USD denominated instruments only. Applied server-side at scan/chart time. */
+  krwPrice?: number;
+  exchangeRate?: number;
 };
 
 export type DailyRow = {
@@ -65,6 +70,12 @@ const NAVER_HEADERS = {
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124 Safari/537.36",
 };
 
+const US_HEADERS = {
+  accept: "application/json, text/plain, */*",
+  "accept-language": "en-US,en;q=0.9",
+  "user-agent": NAVER_HEADERS["user-agent"],
+};
+
 function numeric(value: unknown): number {
   const parsed = Number(String(value ?? "0").replaceAll(",", ""));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -79,6 +90,19 @@ async function fetchJson<T>(url: string): Promise<T> {
     throw new Error(`Market data request failed (${response.status})`);
   }
   return (await response.json()) as T;
+}
+
+async function fetchUsJson<T>(url: string): Promise<T> {
+  const urls = url.includes("query1.finance.yahoo.com")
+    ? [url, url.replace("query1.finance.yahoo.com", "query2.finance.yahoo.com")]
+    : [url];
+  let lastStatus = 0;
+  for (const endpoint of urls) {
+    const response = await fetch(endpoint, { headers: US_HEADERS, cache: "no-store" });
+    if (response.ok) return (await response.json()) as T;
+    lastStatus = response.status;
+  }
+  throw new Error(`US market data request failed (${lastStatus})`);
 }
 
 async function fetchMarket(slug: Market, assetFilter: AssetFilter): Promise<Ticker[]> {
@@ -127,6 +151,70 @@ export async function fetchUniverse(filter: MarketFilter, assetFilter: AssetFilt
   return groups.flat().sort((a, b) => b.marketCap - a.marketCap || a.code.localeCompare(b.code));
 }
 
+type NasdaqRow = {
+  symbol?: string;
+  name?: string;
+  lastsale?: string;
+  marketCap?: string;
+};
+
+function usdNumber(value: unknown): number {
+  return numeric(String(value ?? "").replace(/[$]/g, ""));
+}
+
+function isUsCommonStock(row: NasdaqRow) {
+  const name = String(row.name ?? "").toLowerCase();
+  // Nasdaq's screener includes funds and non-common security classes in every exchange.
+  return !/(etf|fund|trust|note|warrant|rights|units|unit |preferred|depositary|adr)/.test(name);
+}
+
+async function fetchUsExchange(exchange: "nasdaq" | "nyse" | "amex", limit = 1000): Promise<Ticker[]> {
+  const url = `https://api.nasdaq.com/api/screener/stocks?tableonly=true&limit=${limit}&offset=0&exchange=${exchange}`;
+  const payload = await fetchUsJson<{ data?: { table?: { rows?: NasdaqRow[] } } }>(url);
+  const market = exchange.toUpperCase() as Extract<Market, "NASDAQ" | "NYSE" | "AMEX">;
+  const rows = payload.data?.table?.rows ?? [];
+  return rows
+    .filter((row) => row.symbol && row.name && isUsCommonStock(row))
+    .map((row) => ({
+      code: String(row.symbol).toUpperCase(),
+      name: String(row.name).replace(/\s+(Common Stock|Class [A-Z] Common Stock)$/i, "").trim(),
+      market,
+      assetType: "STOCK" as const,
+      marketCap: usdNumber(row.marketCap),
+      price: usdNumber(row.lastsale),
+      currency: "USD" as const,
+    }))
+    .filter((ticker) => ticker.code && ticker.price > 0);
+}
+
+/**
+ * The first rollout scans the liquid, largest 1,000 names per exchange.
+ * This keeps a browser-triggered scan responsive while the provider layer remains
+ * compatible with a future scheduled full-market batch.
+ */
+export async function fetchUsUniverse(filter: MarketFilter, assetFilter: AssetFilter = "stock"): Promise<Ticker[]> {
+  if (assetFilter === "etp") return [];
+  const exchanges: Array<"nasdaq" | "nyse" | "amex"> =
+    filter === "all" ? ["nasdaq", "nyse", "amex"] : [filter as "nasdaq" | "nyse" | "amex"];
+  const groups = await Promise.all(exchanges.map((exchange) => fetchUsExchange(exchange)));
+  const seen = new Set<string>();
+  return groups
+    .flat()
+    .filter((ticker) => {
+      if (seen.has(ticker.code)) return false;
+      seen.add(ticker.code);
+      return true;
+    })
+    .sort((a, b) => b.marketCap - a.marketCap || a.code.localeCompare(b.code));
+}
+
+export async function fetchUsdKrwRate(): Promise<number> {
+  const payload = await fetchUsJson<{ result?: string; rates?: { KRW?: number } }>("https://open.er-api.com/v6/latest/USD");
+  const rate = payload.rates?.KRW;
+  if (!rate || !Number.isFinite(rate)) throw new Error("원/달러 환율을 불러오지 못했습니다.");
+  return rate;
+}
+
 let searchUniverseCache: { expiresAt: number; tickers: Ticker[] } | null = null;
 let searchUniverseRequest: Promise<Ticker[]> | null = null;
 
@@ -135,7 +223,8 @@ async function getSearchUniverse(): Promise<Ticker[]> {
     return searchUniverseCache.tickers;
   }
   if (!searchUniverseRequest) {
-    searchUniverseRequest = fetchUniverse("all", "all")
+    searchUniverseRequest = Promise.all([fetchUniverse("all", "all"), fetchUsUniverse("all", "stock")])
+      .then(([kr, us]) => [...kr, ...us])
       .then((tickers) => {
         searchUniverseCache = { expiresAt: Date.now() + 5 * 60_000, tickers };
         return tickers;
@@ -190,6 +279,36 @@ export async function fetchDailyChart(code: string, years: number): Promise<Dail
     `?startDateTime=${compactDate(start)}000000&endDateTime=${compactDate(end)}235959`;
   const payload = await fetchJson<unknown>(url);
   return Array.isArray(payload) ? (payload as DailyRow[]) : [];
+}
+
+export async function fetchUsDailyChart(code: string, years: number): Promise<DailyRow[]> {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  startDate.setFullYear(startDate.getFullYear() - years);
+  const toDate = (date: Date) => date.toISOString().slice(0, 10);
+  type HistoricalRow = { date?: string; open?: string; high?: string; low?: string; close?: string; volume?: string };
+  const payload = await fetchUsJson<{ data?: { tradesTable?: { rows?: HistoricalRow[] } } }>(
+    `https://api.nasdaq.com/api/quote/${encodeURIComponent(code.toLowerCase())}/historical?assetclass=stocks&fromdate=${toDate(startDate)}&todate=${toDate(endDate)}&limit=5000`,
+  );
+  const rows = payload.data?.tradesTable?.rows ?? [];
+  return rows.map((row) => {
+    const parts = String(row.date ?? "").split("/");
+    const date = parts.length === 3 ? `${parts[2]}${parts[0].padStart(2, "0")}${parts[1].padStart(2, "0")}` : "";
+    return {
+      localDate: date,
+      openPrice: usdNumber(row.open),
+      highPrice: usdNumber(row.high),
+      lowPrice: usdNumber(row.low),
+      closePrice: usdNumber(row.close),
+      accumulatedTradingVolume: numeric(row.volume),
+    };
+  });
+}
+
+export async function fetchTickerDailyChart(ticker: Pick<Ticker, "code" | "market">, years: number): Promise<DailyRow[]> {
+  return ticker.market === "KOSPI" || ticker.market === "KOSDAQ"
+    ? fetchDailyChart(ticker.code, years)
+    : fetchUsDailyChart(ticker.code, years);
 }
 
 function isoWeekKey(value: Date): string {
@@ -317,6 +436,6 @@ export async function screenTicker(
   timeframe: Timeframe,
   maPeriod: MovingAveragePeriod,
 ): Promise<Candidate | null> {
-  const daily = await fetchDailyChart(ticker.code, historyYears(timeframe, maPeriod));
+  const daily = await fetchTickerDailyChart(ticker, historyYears(timeframe, maPeriod));
   return screenCandles(ticker, aggregateCandles(daily, timeframe), maPeriod, timeframe);
 }
