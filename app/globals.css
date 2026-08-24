@@ -519,9 +519,9 @@ select:focus-visible {
 }
 
 .classification-filter .classification-filter-chip.sector {
-  border-color: rgba(27, 70, 59, 0.18);
-  background: #edf3ef;
-  color: var(--green);
+  border-color: rgba(18, 119, 113, 0.2);
+  background: #e4f3f0;
+  color: #127771;
 }
 
 .classification-filter .classification-filter-chip.theme {
@@ -537,9 +537,9 @@ select:focus-visible {
 }
 
 .classification-filter .classification-filter-chip.market.kosdaq {
-  border-color: rgba(123, 98, 33, 0.18);
-  background: #f2ead8;
-  color: #7b6221;
+  border-color: rgba(101, 73, 141, 0.18);
+  background: #eee7f7;
+  color: #65498d;
 }
 
 .classification-filter .classification-filter-chip.market.nasdaq {
@@ -549,15 +549,40 @@ select:focus-visible {
 }
 
 .classification-filter .classification-filter-chip.market.nyse {
-  border-color: rgba(36, 96, 70, 0.18);
-  background: #e9f1ed;
-  color: #246046;
+  border-color: rgba(53, 91, 155, 0.18);
+  background: #e4ecfa;
+  color: #355b9b;
 }
 
 .classification-filter .classification-filter-chip.market.amex {
-  border-color: rgba(118, 81, 133, 0.18);
-  background: #f2e9f5;
-  color: #765185;
+  border-color: rgba(154, 70, 87, 0.18);
+  background: #f6e5e8;
+  color: #9a4657;
+}
+
+.classification-filter .classification-filter-chip.signal.near {
+  border-color: rgba(27, 70, 59, 0.18);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.classification-filter .classification-filter-chip.signal.rising,
+.classification-filter .classification-filter-chip.volume.up {
+  border-color: rgba(189, 135, 41, 0.2);
+  background: var(--gold-soft);
+  color: #8a6115;
+}
+
+.classification-filter .classification-filter-chip.signal.caution {
+  border-color: rgba(165, 68, 49, 0.18);
+  background: #f6e4df;
+  color: #a54431;
+}
+
+.classification-filter .classification-filter-chip.volume.down {
+  border-color: rgba(48, 126, 160, 0.18);
+  background: #e3f0f5;
+  color: #287895;
 }
 
 .classification-filter button.clear-all {
@@ -931,9 +956,9 @@ select:focus-visible {
 }
 
 .sector-tag {
-  border: 1px solid rgba(27, 70, 59, 0.16);
-  background: #edf3ef;
-  color: var(--green);
+  border: 1px solid rgba(18, 119, 113, 0.18);
+  background: #e4f3f0;
+  color: #127771;
 }
 
 .theme-tag {
@@ -1021,8 +1046,8 @@ select:focus-visible {
 }
 
 .candidate-market-tag.kosdaq {
-  background: #f2ead8;
-  color: #7b6221;
+  background: #eee7f7;
+  color: #65498d;
 }
 
 .candidate-market-tag.nasdaq {
@@ -1031,19 +1056,19 @@ select:focus-visible {
 }
 
 .candidate-market-tag.nyse {
-  background: #e9f1ed;
-  color: #246046;
+  background: #e4ecfa;
+  color: #355b9b;
 }
 
 .candidate-market-tag.amex {
-  background: #f2e9f5;
-  color: #765185;
+  background: #f6e5e8;
+  color: #9a4657;
 }
 
 .candidate-sector-tag {
-  border-color: rgba(27, 70, 59, 0.14);
-  background: #edf3ef;
-  color: var(--green);
+  border-color: rgba(18, 119, 113, 0.16);
+  background: #e4f3f0;
+  color: #127771;
 }
 
 .candidate-theme-tag {
@@ -1210,10 +1235,10 @@ select:focus-visible {
 
 .asset-tag {
   padding: 4px 7px;
-  border: 1px solid rgba(27, 70, 59, 0.12);
+  border: 1px solid rgba(83, 96, 91, 0.14);
   border-radius: 999px;
-  background: var(--green-soft);
-  color: var(--green);
+  background: #edf0ee;
+  color: #53605b;
   font: 700 11px var(--font-geist-mono), monospace;
 }
 
@@ -1245,8 +1270,23 @@ select:focus-visible {
 }
 
 .market-tag.kosdaq {
-  color: #765e21;
-  background: #efe8d4;
+  color: #65498d;
+  background: #eee7f7;
+}
+
+.market-tag.nasdaq {
+  color: #3659a8;
+  background: #e9eefb;
+}
+
+.market-tag.nyse {
+  color: #355b9b;
+  background: #e4ecfa;
+}
+
+.market-tag.amex {
+  color: #9a4657;
+  background: #f6e5e8;
 }
 
 .security-header p {

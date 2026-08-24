@@ -995,10 +995,28 @@ export default function Home() {
             <span>⌕</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="종목명 또는 코드" />
           </label>
-          {classificationFilters.length > 0 && (
+          {(classificationFilters.length > 0 || statusFilter !== "all" || volumeFilter !== "all") && (
             <div className="classification-filter">
               <span>선택</span>
               <div>
+                {statusFilter !== "all" && (
+                  <button
+                    type="button"
+                    className={`classification-filter-chip signal ${statusFilter === "상승 진행" ? "rising" : statusFilter === "추격 주의" ? "caution" : "near"}`}
+                    onClick={() => setStatusFilter("all")}
+                  >
+                    {statusFilter} <b>×</b>
+                  </button>
+                )}
+                {volumeFilter !== "all" && (
+                  <button
+                    type="button"
+                    className={`classification-filter-chip volume ${volumeFilter === "증가" ? "up" : "down"}`}
+                    onClick={() => setVolumeFilter("all")}
+                  >
+                    거래량 {volumeFilter} <b>×</b>
+                  </button>
+                )}
                 {classificationFilters.map((filter) => (
                   <button
                     key={`${filter.kind}:${filter.value}`}
@@ -1009,7 +1027,11 @@ export default function Home() {
                     {filter.value} <b>×</b>
                   </button>
                 ))}
-                <button className="clear-all" type="button" onClick={() => setClassificationFilters([])}>전체 해제</button>
+                <button className="clear-all" type="button" onClick={() => {
+                  setClassificationFilters([]);
+                  setStatusFilter("all");
+                  setVolumeFilter("all");
+                }}>전체 해제</button>
               </div>
             </div>
           )}
