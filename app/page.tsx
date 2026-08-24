@@ -97,6 +97,14 @@ function formatUsd(value: number | null | undefined) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
 }
 
+function naverStockPageUrl(ticker: Pick<Ticker, "code" | "currency" | "market">) {
+  if (ticker.currency === "USD") {
+    const exchange = ["NASDAQ", "NYSE", "AMEX"].includes(ticker.market) ? ticker.market : "NASDAQ";
+    return `https://finance.naver.com/world/sise.naver?symbol=${encodeURIComponent(`${exchange}:${ticker.code}`)}`;
+  }
+  return `https://finance.naver.com/item/main.naver?code=${encodeURIComponent(ticker.code)}`;
+}
+
 function formatMaybePrice(value: number | null | undefined) {
   return value === null || value === undefined ? "—" : formatPrice(value);
 }
@@ -1149,7 +1157,7 @@ export default function Home() {
                     ) : (
                     <a
                       className="security-stock-link"
-                      href={selected.currency === "USD" ? `https://finance.yahoo.com/quote/${encodeURIComponent(selected.code)}` : `https://finance.naver.com/item/main.naver?code=${encodeURIComponent(selected.code)}`}
+                      href={naverStockPageUrl(selected)}
                       target="_blank"
                       rel="noreferrer"
                       aria-label={`${selected.name} 종목 페이지 열기`}

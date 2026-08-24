@@ -78,6 +78,9 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(page, /global-stock-search/);
   assert.match(page, /전체 종목명 또는 코드 검색/);
   assert.match(page, /\/api\/search\?query=/);
+  assert.match(page, /finance\.naver\.com\/world\/sise\.naver/);
+  assert.match(page, /naverStockPageUrl/);
+  assert.doesNotMatch(page, /finance\.yahoo\.com\/quote/);
   assert.match(page, /ScreeningTimeframe/);
   assert.match(page, /runFullScan/);
   assert.match(page, /MARKET PULSE/);
