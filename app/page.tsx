@@ -995,18 +995,31 @@ export default function Home() {
             <span>⌕</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="종목명 또는 코드" />
           </label>
-          <div className="filter-row">
-            <select aria-label="돌파 상태" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">모든 상태</option>
-              <option value="근접 돌파">근접 돌파</option>
-              <option value="상승 진행">상승 진행</option>
-              <option value="추격 주의">추격 주의</option>
-            </select>
-            <select aria-label="거래량 상태" value={volumeFilter} onChange={(event) => setVolumeFilter(event.target.value)}>
-              <option value="all">거래량 전체</option>
-              <option value="증가">거래량 증가</option>
-              <option value="감소">거래량 감소</option>
-            </select>
+          <div className="quick-filter-chips" aria-label="돌파 상태와 거래량 필터">
+            <div className="quick-filter-group">
+              <span>돌파</span>
+              {(["all", "근접 돌파", "상승 진행", "추격 주의"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`quick-filter-chip status${statusFilter === value ? " active" : ""}`}
+                  data-status={value}
+                  onClick={() => setStatusFilter(value)}
+                >{value === "all" ? "전체" : value.replace(" 돌파", "").replace(" 진행", "").replace(" 주의", "")}</button>
+              ))}
+            </div>
+            <div className="quick-filter-group">
+              <span>거래량</span>
+              {(["all", "증가", "감소"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`quick-filter-chip volume${volumeFilter === value ? " active" : ""}`}
+                  data-volume={value}
+                  onClick={() => setVolumeFilter(value)}
+                >{value === "all" ? "전체" : value}</button>
+              ))}
+            </div>
           </div>
           {classificationFilters.length > 0 && (
             <div className="classification-filter">
