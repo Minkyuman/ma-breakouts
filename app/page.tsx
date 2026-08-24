@@ -177,8 +177,8 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
       const candleUpColor = rootStyles.getPropertyValue("--candle-up").trim() || "#d95842";
       const candleDownColor = rootStyles.getPropertyValue("--candle-down").trim() || "#2f6fd6";
       const candleFlatColor = rootStyles.getPropertyValue("--candle-flat").trim() || "#7b8580";
-      const ma5Color = rootStyles.getPropertyValue("--ma5").trim() || "#86a99b";
-      const ma10Color = rootStyles.getPropertyValue("--ma10").trim() || "#7656d6";
+      const ma5Color = rootStyles.getPropertyValue("--ma5").trim() || "#32965b";
+      const ma10Color = rootStyles.getPropertyValue("--ma10").trim() || "#cc4651";
       const ma240Color = rootStyles.getPropertyValue("--ma240").trim() || "#18211e";
 
       ctx.font = "11px var(--font-geist-mono), monospace";
@@ -248,8 +248,8 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
       };
 
       drawMovingAverage("ma5", ma5Color, 1.5);
-      drawMovingAverage("ma10", ma10Color, 2.7);
-      drawMovingAverage("ma240", ma240Color, 2.9);
+      drawMovingAverage("ma10", ma10Color, 2.2);
+      drawMovingAverage("ma240", ma240Color, 2.3);
 
       const labelIndexes = [0, Math.floor((visible.length - 1) / 2), visible.length - 1];
       ctx.fillStyle = "#8a928d";
