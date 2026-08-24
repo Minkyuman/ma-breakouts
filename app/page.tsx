@@ -137,7 +137,7 @@ function compareCandidates(a: Candidate, b: Candidate) {
 
 function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const dragRef = useRef<{ x: number; start: number } | null>(null);
+  const dragRef = useRef<{ x: number; y: number; start: number } | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ y: number; price: number } | null>(null);
   const [panStart, setPanStart] = useState(0);
@@ -333,15 +333,36 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
         }}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
-          dragRef.current = { x: event.clientX, start: panStart };
+          dragRef.current = { x: event.clientX, y: event.clientY, start: panStart };
           setDragging(true);
           setHoverIndex(null);
           setHoverPoint(null);
         }}
         onPointerUp={(event) => {
-          if (dragRef.current) event.currentTarget.releasePointerCapture(event.pointerId);
+          const dragStart = dragRef.current;
+          if (dragStart) event.currentTarget.releasePointerCapture(event.pointerId);
           dragRef.current = null;
           setDragging(false);
+          if (dragStart && Math.hypot(event.clientX - dragStart.x, event.clientY - dragStart.y) < 8) {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const left = 10;
+            const right = 62;
+            const top = 18;
+            const priceBottom = rect.height * 0.69;
+            const ratio = Math.max(0, Math.min(0.999, (event.clientX - rect.left - left) / (rect.width - left - right)));
+            const index = Math.min(visible.length - 1, Math.floor(ratio * visible.length));
+            const highs = visible.map((point) => point.high);
+            const lows = visible.map((point) => point.low);
+            const maValues = visible.flatMap((point) =>
+              [point.ma5, point.ma10, point.ma240].filter((value): value is number => value !== null),
+            );
+            const minPrice = Math.min(...lows, ...maValues) * 0.985;
+            const maxPrice = Math.max(...highs, ...maValues) * 1.015;
+            const y = Math.max(top, Math.min(priceBottom, event.clientY - rect.top));
+            const price = maxPrice - ((y - top) / Math.max(priceBottom - top, 1)) * (maxPrice - minPrice);
+            setHoverIndex(index);
+            setHoverPoint({ y, price });
+          }
         }}
         onPointerCancel={() => {
           dragRef.current = null;
