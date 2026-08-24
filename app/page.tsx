@@ -169,7 +169,7 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
       const maxPrice = Math.max(...highs, ...maValues) * 1.015;
       const maxVolume = Math.max(...visible.map((point) => point.volume), 1);
       const xStep = plotWidth / Math.max(visible.length, 1);
-      const candleWidth = Math.max(2, Math.min(9, xStep * 0.58));
+      const candleWidth = Math.max(4, Math.min(12, xStep * 0.72));
       const x = (index: number) => left + xStep * (index + 0.5);
       const y = (price: number) =>
         top + ((maxPrice - price) / Math.max(maxPrice - minPrice, 1)) * (priceBottom - top);
@@ -189,7 +189,7 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
         const lineY = top + ratio * (priceBottom - top);
         const price = maxPrice - ratio * (maxPrice - minPrice);
         ctx.strokeStyle = "rgba(42, 54, 65, 0.09)";
-        ctx.lineWidth = 1;
+      ctx.lineWidth = 1.1;
         ctx.beginPath();
         ctx.moveTo(left, lineY);
         ctx.lineTo(width - right + 6, lineY);
@@ -332,7 +332,7 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
           const priceBottom = rect.height * 0.69;
           if (dragRef.current) {
             const plotWidth = rect.width - left - right;
-            const xStep = plotWidth / Math.max(range, 1);
+      const xStep = plotWidth / Math.max(visible.length, 1);
             const deltaBars = Math.round((event.clientX - dragRef.current.x) / Math.max(xStep, 1));
             setPanStart(Math.max(0, Math.min(maxPanStart, dragRef.current.start - deltaBars)));
             return;
@@ -974,12 +974,12 @@ export default function Home() {
                       <span className="range-side-label">좁게</span>
                       <input
                         type="range"
-                        min="30"
-                        max="180"
+            min="15"
+            max="360"
                         step="5"
                         value={range}
                         aria-label="차트 표시 봉 수"
-                        style={{ background: `linear-gradient(90deg, var(--green) ${((range - 30) / 150) * 100}%, #dfe2dc ${((range - 30) / 150) * 100}% 100%)` }}
+            style={{ background: `linear-gradient(90deg, var(--green) ${((range - 15) / 345) * 100}%, #dfe2dc ${((range - 15) / 345) * 100}% 100%)` }}
                         onChange={(event) => setRange(Number(event.target.value))}
                       />
                       <span className="range-side-label">넓게</span>
