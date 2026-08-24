@@ -131,7 +131,7 @@ type PriceChangeSummary = {
 
 type PriceChangePeriod = "daily" | "weekly" | "monthly";
 type PriceChangeSet = Record<PriceChangePeriod, PriceChangeSummary | null>;
-type ClassificationFilter = { kind: "sector" | "theme"; value: string } | null;
+type ClassificationFilter = { kind: "market" | "sector" | "theme"; value: string } | null;
 
 const EMPTY_PRICE_CHANGES: PriceChangeSet = { daily: null, weekly: null, monthly: null };
 const CHART_RANGE_MIN = 10;
@@ -538,6 +538,7 @@ export default function Home() {
       if (normalized && !`${item.name} ${item.code}`.toLowerCase().includes(normalized)) return false;
       if (statusFilter !== "all" && item.status !== statusFilter) return false;
       if (volumeFilter !== "all" && item.volumeStatus !== volumeFilter) return false;
+      if (classificationFilter?.kind === "market" && item.market !== classificationFilter.value) return false;
       if (classificationFilter?.kind === "sector" && item.sector !== classificationFilter.value) return false;
       if (classificationFilter?.kind === "theme" && !item.themes?.includes(classificationFilter.value)) return false;
       return true;
@@ -992,7 +993,7 @@ export default function Home() {
           </div>
           {classificationFilter && (
             <div className="classification-filter">
-              <span>{classificationFilter.kind === "sector" ? "섹터" : "테마"}</span>
+              <span>{classificationFilter.kind === "market" ? "시장" : classificationFilter.kind === "sector" ? "섹터" : "테마"}</span>
               <button type="button" onClick={() => setClassificationFilter(null)}>
                 {classificationFilter.value} <b>×</b>
               </button>
@@ -1026,7 +1027,13 @@ export default function Home() {
                     {item.isNasdaq100 && <em className="ndx-chip">NASDAQ 100</em>}
                   </span>
                   <span className="candidate-classification" aria-label={`${item.name} 섹터와 테마`}>
-                    <span className={`candidate-market-tag ${item.market.toLowerCase()}`}>{item.market}</span>
+                    <span
+                      className={`candidate-market-tag ${item.market.toLowerCase()}${classificationFilter?.kind === "market" && classificationFilter.value === item.market ? " active" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(event) => { event.stopPropagation(); setClassificationFilter({ kind: "market", value: item.market }); }}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setClassificationFilter({ kind: "market", value: item.market }); } }}
+                    >{item.market}</span>
                     {item.sector ? (
                       <span
                         className={`candidate-sector-tag${classificationFilter?.kind === "sector" && classificationFilter.value === item.sector ? " active" : ""}`}

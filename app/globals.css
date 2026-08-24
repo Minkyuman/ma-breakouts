@@ -938,8 +938,10 @@ select:focus-visible {
 
 .candidate-sector-tag:hover:not(.pending),
 .candidate-theme-tag:hover,
+.candidate-market-tag:hover,
 .candidate-sector-tag.active,
-.candidate-theme-tag.active {
+.candidate-theme-tag.active,
+.candidate-market-tag.active {
   border-color: currentColor;
   box-shadow: 0 1px 5px rgba(28, 43, 36, 0.12);
 }
