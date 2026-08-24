@@ -40,6 +40,7 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(layout, /openGraph/);
   assert.match(layout, /brand-mark\.png/);
   assert.match(layout, /favicon\.svg/);
+  assert.match(layout, /favicon\.ico/);
   assert.match(layout, /\/api\/favicon/);
   assert.match(faviconRoute, /ImageResponse/);
   assert.match(page, /ChartCanvas/);
@@ -102,5 +103,6 @@ test("ships product metadata and removes the disposable preview", async () => {
   await access(new URL("../app/api/universe/route.ts", import.meta.url));
   await access(new URL("../app/api/search/route.ts", import.meta.url));
   await access(new URL("../app/api/favicon/route.ts", import.meta.url));
+  await access(new URL("../public/favicon.ico", import.meta.url));
   await access(root);
 });

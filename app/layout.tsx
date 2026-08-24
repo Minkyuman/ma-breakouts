@@ -29,11 +29,12 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     icons: {
       icon: [
+        { url: "/favicon.ico?v=3", type: "image/x-icon", sizes: "64x64" },
         { url: "/api/favicon?v=2", type: "image/png", sizes: "64x64" },
         { url: "/favicon.svg?v=2", type: "image/svg+xml", sizes: "any" },
         { url: "/brand-mark.png", type: "image/png", sizes: "512x512" },
       ],
-      shortcut: "/api/favicon?v=2",
+      shortcut: "/favicon.ico?v=3",
       apple: [{ url: "/brand-mark.png", type: "image/png" }],
     },
   };
