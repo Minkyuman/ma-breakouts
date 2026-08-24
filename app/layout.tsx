@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 
-const title = "MA BREAKOUTS — 선 넘네.. 한국 주식 이평 돌파 차트";
+const title = "LINE BREAKER — 선 넘네.. 한·미 주식 이평 돌파 차트";
 const description =
-  "전일·전주·전월 흐름과 MA10·MA240 돌파를 한눈에 확인하는 한국 주식 차트 스크리너.";
+  "한국·미국 주식의 전일·전주·전월 흐름과 MA10·MA240 돌파를 한눈에 확인하는 차트 스크리너.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -26,6 +26,11 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       images: [imageUrl],
+    },
+    icons: {
+      icon: [{ url: "/brand-mark.png", type: "image/png", sizes: "any" }],
+      shortcut: "/brand-mark.png",
+      apple: [{ url: "/brand-mark.png", type: "image/png" }],
     },
   };
 }

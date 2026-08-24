@@ -850,8 +850,8 @@ export default function Home() {
             <img className="brand-logo" src="/brand-mark.png" alt="선 넘네.." />
           </button>
           <div className="brand-copy">
-            <p className="eyebrow">KOREA MARKET</p>
-            <h1>MA BREAKOUTS</h1>
+            <p className="eyebrow">KOREA &amp; U.S. MARKETS</p>
+            <h1>LINE BREAKER</h1>
           </div>
         </div>
         <div className="topbar-actions">

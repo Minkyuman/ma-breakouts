@@ -21,9 +21,9 @@ test("server-renders the 선 넘네 product shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /선 넘네\.\./);
-  assert.match(html, /MA BREAKOUTS/);
+  assert.match(html, /LINE BREAKER/);
   assert.match(html, /brand-mark\.png/);
-  assert.match(html, /한국 주식 이평 돌파 차트/);
+  assert.match(html, /한·미 주식 이평 돌파 차트/);
   assert.match(html, /전 종목 새로 스캔/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
@@ -37,9 +37,11 @@ test("ships product metadata and removes the disposable preview", async () => {
   ]);
   assert.match(layout, /선 넘네\.\./);
   assert.match(layout, /openGraph/);
+  assert.match(layout, /brand-mark\.png/);
   assert.match(page, /ChartCanvas/);
   assert.match(page, /brand-logo/);
-  assert.match(page, /MA BREAKOUTS/);
+  assert.match(page, /LINE BREAKER/);
+  assert.match(page, /KOREA &amp; U\.S\. MARKETS/);
   assert.match(page, /ctx\.lineWidth = 0\.8/);
   assert.match(page, /MA 5/);
   assert.match(page, /MA 10/);
