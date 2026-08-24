@@ -4,6 +4,7 @@ import {
   type Candidate,
   type MovingAveragePeriod,
   type ScreeningMaPeriod,
+  type PatternFilter,
   type ScreeningTimeframe,
   type Ticker,
   type Timeframe,
@@ -13,6 +14,7 @@ type ScreenRequest = {
   tickers?: Ticker[];
   timeframe?: ScreeningTimeframe;
   maPeriod?: ScreeningMaPeriod;
+  pattern?: PatternFilter;
 };
 
 export async function POST(request: Request) {
@@ -23,6 +25,10 @@ export async function POST(request: Request) {
       body.timeframe === "monthly" || body.timeframe === "both" ? body.timeframe : "weekly";
     const maPeriod: ScreeningMaPeriod =
       body.maPeriod === 240 || body.maPeriod === "both" ? body.maPeriod : 10;
+    const pattern: PatternFilter =
+      body.pattern === "inverse_head_shoulders" || body.pattern === "head_shoulders" || body.pattern === "both"
+        ? body.pattern
+        : "none";
     const timeframes: Timeframe[] = timeframe === "both" ? ["weekly", "monthly"] : [timeframe];
     const maPeriods: MovingAveragePeriod[] = maPeriod === "both" ? [10, 240] : [maPeriod];
     if (!tickers.length) {
@@ -38,7 +44,7 @@ export async function POST(request: Request) {
         );
         const settled = await Promise.allSettled(
           conditions.map(({ period, movingAverage }) =>
-            screenTicker(ticker, period, movingAverage),
+            screenTicker(ticker, period, movingAverage, pattern),
           ),
         );
         const groupFailures = settled.filter((result) => result.status === "rejected").length;
@@ -67,6 +73,7 @@ export async function POST(request: Request) {
       analyzedSignals: tickers.length * timeframes.length * maPeriods.length,
       timeframe,
       maPeriod,
+      pattern,
     });
   } catch (error) {
     return NextResponse.json(

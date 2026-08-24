@@ -423,6 +423,10 @@ select:focus-visible {
   min-width: 126px;
 }
 
+.pattern-select select {
+  min-width: 142px;
+}
+
 .scan-action {
   gap: 7px;
 }
@@ -789,6 +793,18 @@ select:focus-visible {
   border-radius: 5px;
   background: linear-gradient(145deg, #245b4d, var(--green-deep));
   color: white;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.pattern-chip {
+  flex: 0 0 auto;
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: #eee8fb;
+  color: #6540a8;
   font-size: 8px;
   font-style: normal;
   font-weight: 750;

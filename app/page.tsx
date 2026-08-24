@@ -7,6 +7,7 @@ import type {
   ChartTimeframe,
   ChartPoint,
   MarketFilter,
+  PatternFilter,
   ScreeningMaPeriod,
   ScreeningTimeframe,
   Ticker,
@@ -482,6 +483,7 @@ function ChartCanvas({
 export default function Home() {
   const [timeframe, setTimeframe] = useState<ScreeningTimeframe>("weekly");
   const [maPeriod, setMaPeriod] = useState<ScreeningMaPeriod>(240);
+  const [pattern, setPattern] = useState<PatternFilter>("none");
   const [market, setMarket] = useState<MarketFilter>("all");
   const [asset, setAsset] = useState<AssetFilter>("all");
   const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("weekly");
@@ -624,8 +626,9 @@ export default function Home() {
       setProgress({ done: 0, total: tickers.length, failures: 0 });
       const timeframeLabel = timeframe === "both" ? "주봉·월봉 AND" : timeframe === "weekly" ? "주봉" : "월봉";
       const maLabel = maPeriod === "both" ? "10·240이평 AND" : `${maPeriod}이평`;
+      const patternLabel = pattern === "inverse_head_shoulders" ? "역헤드앤숄더" : pattern === "head_shoulders" ? "헤드앤숄더" : pattern === "both" ? "헤드앤숄더 전체" : "패턴 미사용";
       const conditionCount = (timeframe === "both" ? 2 : 1) * (maPeriod === "both" ? 2 : 1);
-      setMessage(`${tickers.length.toLocaleString("ko-KR")}종목 · ${timeframeLabel} · ${maLabel} 분석 중`);
+      setMessage(`${tickers.length.toLocaleString("ko-KR")}종목 · ${timeframeLabel} · ${maLabel} · ${patternLabel} 분석 중`);
       const batches: Ticker[][] = [];
       const batchSize = conditionCount >= 4 ? 8 : conditionCount === 2 ? 12 : 24;
       for (let index = 0; index < tickers.length; index += batchSize) batches.push(tickers.slice(index, index + batchSize));
@@ -640,7 +643,7 @@ export default function Home() {
           const response = await fetch("/api/screen", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ tickers: batch, timeframe, maPeriod }),
+            body: JSON.stringify({ tickers: batch, timeframe, maPeriod, pattern }),
           });
           if (!response.ok) {
             failures += batch.length * conditionCount;
@@ -669,7 +672,8 @@ export default function Home() {
       const completedConditionLabel = [
         timeframe === "both" ? "주봉·월봉" : timeframe === "weekly" ? "주봉" : "월봉",
         maPeriod === "both" ? "10·240이평" : `${maPeriod}이평`,
-      ].join(" · ");
+        pattern === "inverse_head_shoulders" ? "역헤드앤숄더" : pattern === "head_shoulders" ? "헤드앤숄더" : pattern === "both" ? "패턴" : null,
+      ].filter(Boolean).join(" · ");
       setMessage(
         usesAndCondition
           ? `방금 완료 · ${completedConditionLabel} 모두 돌파 ${uniqueStocks}종목${failures ? ` · ${failures}건 실패` : ""}`
@@ -888,6 +892,15 @@ export default function Home() {
             ))}
           </div>
         </div>
+        <label className="select-field pattern-select">
+          <span>패턴</span>
+          <select value={pattern} onChange={(event) => setPattern(event.target.value as PatternFilter)}>
+            <option value="none">패턴 미사용</option>
+            <option value="inverse_head_shoulders">역헤드앤숄더</option>
+            <option value="head_shoulders">헤드앤숄더</option>
+            <option value="both">헤드앤숄더 전체</option>
+          </select>
+        </label>
         <label className="select-field">
           <span>시장</span>
           <select value={market} onChange={(event) => setMarket(event.target.value as MarketFilter)}>
@@ -983,9 +996,10 @@ export default function Home() {
                       </em>
                     )}
                     <em className="signal-chip" data-status={item.status}>{item.status}</em>
+                    {item.pattern && <em className="pattern-chip" title={`넥라인 ${formatPrice(item.pattern.neckline)} · 점수 ${item.pattern.score}`}>{item.pattern.label}</em>}
                   </span>
                   <small>
-                    {item.code} · {item.market} · {item.assetType === "STOCK" ? "주식" : item.assetType} · {item.matchedTimeframes?.length === 2 ? "주·월 AND" : item.timeframe === "weekly" ? "주봉" : "월봉"} · {item.matchedMaPeriods?.length === 2 ? "MA10·240 AND" : `MA${item.maPeriod}`} · {formatCap(item.marketCap)}
+                    {item.code} · {item.market} · {item.assetType === "STOCK" ? "주식" : item.assetType} · {item.matchedTimeframes?.length === 2 ? "주·월 AND" : item.timeframe === "weekly" ? "주봉" : "월봉"} · {item.matchedMaPeriods?.length === 2 ? "MA10·240 AND" : `MA${item.maPeriod}`}{item.pattern ? ` · ${item.pattern.label}` : ""} · {formatCap(item.marketCap)}
                   </small>
                 </span>
                 <span className="candidate-metric">
