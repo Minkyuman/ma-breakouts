@@ -637,6 +637,56 @@ select:focus-visible {
   background: #c8cbc5;
 }
 
+.market-watch-list {
+  display: grid;
+  gap: 7px;
+  padding: 4px 15px 16px;
+}
+
+.market-watch-list > p {
+  margin: 0 0 5px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.market-watch-list button {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 252, 0.56);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.market-watch-list button:hover {
+  border-color: rgba(24, 77, 65, 0.35);
+  transform: translateY(-1px);
+}
+
+.market-watch-list button.active {
+  border-color: var(--green);
+  background: rgba(227, 241, 235, 0.9);
+  box-shadow: inset 3px 0 0 var(--green);
+}
+
+.market-watch-list button span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.market-watch-list button small {
+  color: var(--muted);
+  font: 600 9px var(--font-geist-mono), monospace;
+  letter-spacing: 0.04em;
+}
+
 .candidate-row {
   width: 100%;
   min-height: 72px;

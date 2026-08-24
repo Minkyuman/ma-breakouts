@@ -80,11 +80,16 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(page, /\/api\/search\?query=/);
   assert.match(page, /ScreeningTimeframe/);
   assert.match(page, /runFullScan/);
+  assert.match(page, /MARKET PULSE/);
+  assert.match(page, /MARKET_WATCHES/);
+  assert.match(page, /\/api\/market-chart/);
+  assert.doesNotMatch(page, /useState<Candidate\[\]>\(INITIAL_RESULTS\)/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
   await access(new URL("../public/og.png", import.meta.url));
   await access(new URL("../app/api/screen/route.ts", import.meta.url));
   await access(new URL("../app/api/chart/route.ts", import.meta.url));
+  await access(new URL("../app/api/market-chart/route.ts", import.meta.url));
   await access(new URL("../app/api/universe/route.ts", import.meta.url));
   await access(new URL("../app/api/search/route.ts", import.meta.url));
   await access(root);

@@ -64,6 +64,26 @@ const INITIAL_RESULTS: Candidate[] = [
   },
 ];
 
+type MarketWatch = {
+  id: string;
+  name: string;
+  shortName: string;
+  unit: "pt" | "원";
+};
+
+const MARKET_WATCHES: MarketWatch[] = [
+  { id: "kospi", name: "코스피", shortName: "KOSPI", unit: "pt" },
+  { id: "kosdaq", name: "코스닥", shortName: "KOSDAQ", unit: "pt" },
+  { id: "sp500", name: "S&P 500", shortName: "S&P 500", unit: "pt" },
+  { id: "nasdaq100", name: "나스닥 100", shortName: "NASDAQ 100", unit: "pt" },
+  { id: "nasdaq", name: "나스닥 종합", shortName: "NASDAQ", unit: "pt" },
+  { id: "dow", name: "다우존스", shortName: "DOW", unit: "pt" },
+  { id: "russell", name: "러셀 2000", shortName: "RUSSELL 2000", unit: "pt" },
+  { id: "sox", name: "필라델피아 반도체", shortName: "SOX", unit: "pt" },
+  { id: "usdkrw", name: "달러 / 원", shortName: "USD/KRW", unit: "원" },
+  { id: "vix", name: "VIX 변동성 지수", shortName: "VIX", unit: "pt" },
+];
+
 const number = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 
 function formatPrice(value: number) {
@@ -385,8 +405,9 @@ export default function Home() {
   const [market, setMarket] = useState<MarketFilter>("all");
   const [asset, setAsset] = useState<AssetFilter>("all");
   const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("weekly");
-  const [results, setResults] = useState<Candidate[]>(INITIAL_RESULTS);
-  const [selectedKey, setSelectedKey] = useState(candidateKey(INITIAL_RESULTS[0]));
+  const [results, setResults] = useState<Candidate[]>([]);
+  const [selectedKey, setSelectedKey] = useState("");
+  const [marketWatchId, setMarketWatchId] = useState("kospi");
   const [directTicker, setDirectTicker] = useState<Ticker | null>(null);
   const [stockQuery, setStockQuery] = useState("");
   const [stockMatches, setStockMatches] = useState<Ticker[]>([]);
@@ -402,7 +423,7 @@ export default function Home() {
   const [scanning, setScanning] = useState(false);
   const [logoOpen, setLogoOpen] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failures: 0 });
-  const [message, setMessage] = useState("최근 저장된 240주선 스캔 결과");
+  const [message, setMessage] = useState("스캔 전 · 주요 시장 흐름을 확인하세요");
 
   useEffect(() => {
     if (!logoOpen) return;
@@ -429,8 +450,18 @@ export default function Home() {
   }, [results, query, statusFilter, volumeFilter]);
 
   const selectedCandidate = results.find((item) => candidateKey(item) === selectedKey) ?? filtered[0] ?? results[0];
-  const selected = directTicker ?? selectedCandidate;
-  const selectedSignal = directTicker ? undefined : selectedCandidate;
+  const activeMarketWatch = MARKET_WATCHES.find((item) => item.id === marketWatchId) ?? MARKET_WATCHES[0];
+  const isMarketOverview = !directTicker && !selectedCandidate;
+  const marketTicker: Ticker = {
+    code: "MARKET",
+    name: activeMarketWatch.name,
+    market: "KOSPI",
+    assetType: "STOCK",
+    marketCap: 0,
+    price: 0,
+  };
+  const selected = directTicker ?? selectedCandidate ?? marketTicker;
+  const selectedSignal = directTicker || isMarketOverview ? undefined : selectedCandidate;
 
   useEffect(() => {
     const normalized = stockQuery.trim();
@@ -467,7 +498,10 @@ export default function Home() {
     setChartLoading(true);
     setChart([]);
     setPriceChanges(EMPTY_PRICE_CHANGES);
-    fetch(`/api/chart?code=${selected.code}&timeframe=${chartTimeframe}`, {
+    const endpoint = isMarketOverview
+      ? `/api/market-chart?id=${encodeURIComponent(activeMarketWatch.id)}&timeframe=${chartTimeframe}`
+      : `/api/chart?code=${selected.code}&timeframe=${chartTimeframe}`;
+    fetch(endpoint, {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -493,7 +527,7 @@ export default function Home() {
         if (!controller.signal.aborted) setChartLoading(false);
       });
     return () => controller.abort();
-  }, [selected?.code, chartTimeframe]);
+  }, [selected?.code, chartTimeframe, isMarketOverview, activeMarketWatch.id]);
 
   async function runFullScan() {
     const token = ++scanToken.current;
@@ -586,6 +620,8 @@ export default function Home() {
     chartTimeframe === "daily" ? "일봉" : chartTimeframe === "weekly" ? "주봉" : "월봉";
   const chartMaUnit =
     chartTimeframe === "daily" ? "일" : chartTimeframe === "weekly" ? "주" : "개월";
+  const priceUnit = isMarketOverview ? activeMarketWatch.unit : "원";
+  const hasScreenResults = results.length > 0 || scanning;
   const progressPct = progress.total ? Math.min(100, (progress.done / progress.total) * 100) : 0;
   const currentPeriod = chart.at(-1);
   const previousPeriod = chart.at(-2);
@@ -819,11 +855,12 @@ export default function Home() {
         <aside className="candidate-panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">BREAKOUT LIST</p>
-              <h2>돌파 후보</h2>
+              <p className="eyebrow">{hasScreenResults ? "BREAKOUT LIST" : "MARKET PULSE"}</p>
+              <h2>{hasScreenResults ? "돌파 후보" : "주요 시장"}</h2>
             </div>
-            <span className="count-pill">{filtered.length}</span>
+            <span className="count-pill">{hasScreenResults ? filtered.length : MARKET_WATCHES.length}</span>
           </div>
+          {hasScreenResults ? <>
           <label className="search-box">
             <span>⌕</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="종목명 또는 코드" />
@@ -884,6 +921,22 @@ export default function Home() {
             ))}
             {!filtered.length && <div className="empty-state">조건에 맞는 후보가 없습니다.</div>}
           </div>
+          </> : (
+            <div className="market-watch-list" aria-label="주요 시장 빠른 선택">
+              <p>스크리닝 전에는 주요 시장 흐름을 먼저 확인하세요.</p>
+              {MARKET_WATCHES.map((watch) => (
+                <button
+                  key={watch.id}
+                  type="button"
+                  className={watch.id === activeMarketWatch.id ? "active" : ""}
+                  onClick={() => setMarketWatchId(watch.id)}
+                >
+                  <span>{watch.name}</span>
+                  <small>{watch.shortName}</small>
+                </button>
+              ))}
+            </div>
+          )}
         </aside>
 
         <section className="chart-panel">
@@ -892,6 +945,9 @@ export default function Home() {
               <div className="security-header">
                   <div>
                     <div className="security-title">
+                    {isMarketOverview ? (
+                      <h2>{selected.name}</h2>
+                    ) : (
                     <a
                       className="security-stock-link"
                       href={`https://finance.naver.com/item/main.naver?code=${encodeURIComponent(selected.code)}`}
@@ -901,22 +957,23 @@ export default function Home() {
                     >
                       <h2>{selected.name}</h2>
                     </a>
-                    <span>{selected.code}</span>
+                    )}
+                    <span>{isMarketOverview ? "MARKET OVERVIEW" : selected.code}</span>
                     <span className={`market-tag ${selected.market.toLowerCase()}`}>{selected.market}</span>
                     <span className={`asset-tag ${selected.assetType.toLowerCase()}`}>
-                      {selected.assetType === "STOCK" ? "주식" : selected.assetType}
+                      {isMarketOverview ? "주요 지수" : selected.assetType === "STOCK" ? "주식" : selected.assetType}
                     </span>
                     {directTicker && <span className="direct-view-tag">직접 조회</span>}
                   </div>
                   <p>
-                    {chartTimeframeLabel} · MA10 {isMa10Breakout ? "상향돌파" : detailCurrentRelation10 || "계산 중"} · MA240 {isMa240Breakout ? "상향돌파" : detailCurrentRelation240 || "계산 중"}
+                    {chartTimeframeLabel} · {isMarketOverview ? "시장 흐름" : `MA10 ${isMa10Breakout ? "상향돌파" : detailCurrentRelation10 || "계산 중"} · MA240 ${isMa240Breakout ? "상향돌파" : detailCurrentRelation240 || "계산 중"}`}
                   </p>
                 </div>
                 <div className="security-price">
                   <small>현재가</small>
                   <div>
                     <strong>{formatPrice(detailCurrentClose)}</strong>
-                    <span>원</span>
+                    <span>{priceUnit}</span>
                   </div>
                   <small className="current-price-change" aria-label="기간별 현재가 변동">
                     {(["daily", "weekly", "monthly"] as PriceChangePeriod[]).map((period) => {
@@ -938,7 +995,7 @@ export default function Home() {
               </div>
 
               <div className="metric-grid">
-                <article><span>시가총액</span><strong>{formatCap(selected.marketCap)}</strong></article>
+                <article><span>{isMarketOverview ? "시장 지표" : "시가총액"}</span><strong>{isMarketOverview ? activeMarketWatch.shortName : formatCap(selected.marketCap)}</strong></article>
                 <article className="ma-metric">
                   <span>MA10 · 10{chartMaUnit}선</span>
                   <strong>{formatMaybePrice(detailCurrentMa10)}</strong>
@@ -997,9 +1054,9 @@ export default function Home() {
                   <div className="step-number">01</div>
                   <div>
                     <span>직전 봉</span>
-                    <strong>{formatPrice(detailPreviousClose)}원</strong>
-                    <small className="ma-evidence ma10">MA10 {formatMaybePrice(detailPreviousMa10)}원 {detailPreviousRelation10}</small>
-                    <small className="ma-evidence ma240">MA240 {formatMaybePrice(detailPreviousMa240)}원 {detailPreviousRelation240}</small>
+                    <strong>{formatPrice(detailPreviousClose)}{priceUnit}</strong>
+                    <small className="ma-evidence ma10">MA10 {formatMaybePrice(detailPreviousMa10)}{priceUnit} {detailPreviousRelation10}</small>
+                    <small className="ma-evidence ma240">MA240 {formatMaybePrice(detailPreviousMa240)}{priceUnit} {detailPreviousRelation240}</small>
                   </div>
                 </article>
                 <div className="flow-arrow">→</div>
@@ -1007,9 +1064,9 @@ export default function Home() {
                   <div className="step-number">02</div>
                   <div>
                     <span>현재 봉</span>
-                    <strong>{formatPrice(detailCurrentClose)}원</strong>
-                    <small className="ma-evidence ma10">MA10 {formatMaybePrice(detailCurrentMa10)}원 {detailCurrentRelation10}</small>
-                    <small className="ma-evidence ma240">MA240 {formatMaybePrice(detailCurrentMa240)}원 {detailCurrentRelation240}</small>
+                    <strong>{formatPrice(detailCurrentClose)}{priceUnit}</strong>
+                    <small className="ma-evidence ma10">MA10 {formatMaybePrice(detailCurrentMa10)}{priceUnit} {detailCurrentRelation10}</small>
+                    <small className="ma-evidence ma240">MA240 {formatMaybePrice(detailCurrentMa240)}{priceUnit} {detailCurrentRelation240}</small>
                     <small className={`price-change ${priceTone}`}>
                       직전 봉 대비 {priceDirection} {signed(priceChangePct, 2)}
                     </small>
