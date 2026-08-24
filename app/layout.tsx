@@ -28,8 +28,11 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [imageUrl],
     },
     icons: {
-      icon: [{ url: "/brand-mark.png", type: "image/png", sizes: "any" }],
-      shortcut: "/brand-mark.png",
+      icon: [
+        { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
+        { url: "/brand-mark.png", type: "image/png", sizes: "512x512" },
+      ],
+      shortcut: "/favicon.svg",
       apple: [{ url: "/brand-mark.png", type: "image/png" }],
     },
   };

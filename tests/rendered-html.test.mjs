@@ -38,6 +38,7 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(layout, /선 넘네\.\./);
   assert.match(layout, /openGraph/);
   assert.match(layout, /brand-mark\.png/);
+  assert.match(layout, /favicon\.svg/);
   assert.match(page, /ChartCanvas/);
   assert.match(page, /brand-logo/);
   assert.match(page, /LINE BREAKER/);
