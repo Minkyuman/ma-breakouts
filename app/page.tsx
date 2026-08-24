@@ -169,7 +169,10 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
       const maxPrice = Math.max(...highs, ...maValues) * 1.015;
       const maxVolume = Math.max(...visible.map((point) => point.volume), 1);
       const xStep = plotWidth / Math.max(visible.length, 1);
-      const candleWidth = Math.max(4, Math.min(12, xStep * 0.72));
+      // Keep each bar visually substantial when the view is zoomed in, while
+      // preserving a small gap so adjacent candles remain distinguishable.
+      // The same width is used for volume to keep price/volume aligned.
+      const candleWidth = Math.max(4, Math.min(56, xStep * 0.82));
       const x = (index: number) => left + xStep * (index + 0.5);
       const y = (price: number) =>
         top + ((maxPrice - price) / Math.max(maxPrice - minPrice, 1)) * (priceBottom - top);
@@ -974,12 +977,12 @@ export default function Home() {
                       <span className="range-side-label">좁게</span>
                       <input
                         type="range"
-            min="15"
+            min="10"
             max="360"
                         step="5"
                         value={range}
                         aria-label="차트 표시 봉 수"
-            style={{ background: `linear-gradient(90deg, var(--green) ${((range - 15) / 345) * 100}%, #dfe2dc ${((range - 15) / 345) * 100}% 100%)` }}
+            style={{ background: `linear-gradient(90deg, var(--green) ${((range - 10) / 350) * 100}%, #dfe2dc ${((range - 10) / 350) * 100}% 100%)` }}
                         onChange={(event) => setRange(Number(event.target.value))}
                       />
                       <span className="range-side-label">넓게</span>
