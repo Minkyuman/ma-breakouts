@@ -131,6 +131,7 @@ type PriceChangeSummary = {
 
 type PriceChangePeriod = "daily" | "weekly" | "monthly";
 type PriceChangeSet = Record<PriceChangePeriod, PriceChangeSummary | null>;
+type ClassificationFilter = { kind: "sector" | "theme"; value: string } | null;
 
 const EMPTY_PRICE_CHANGES: PriceChangeSet = { daily: null, weekly: null, monthly: null };
 const CHART_RANGE_MIN = 10;
@@ -503,6 +504,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [volumeFilter, setVolumeFilter] = useState("all");
+  const [classificationFilter, setClassificationFilter] = useState<ClassificationFilter>(null);
   const [range, setRange] = useState(80);
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [priceChanges, setPriceChanges] = useState<PriceChangeSet>(EMPTY_PRICE_CHANGES);
@@ -536,9 +538,11 @@ export default function Home() {
       if (normalized && !`${item.name} ${item.code}`.toLowerCase().includes(normalized)) return false;
       if (statusFilter !== "all" && item.status !== statusFilter) return false;
       if (volumeFilter !== "all" && item.volumeStatus !== volumeFilter) return false;
+      if (classificationFilter?.kind === "sector" && item.sector !== classificationFilter.value) return false;
+      if (classificationFilter?.kind === "theme" && !item.themes?.includes(classificationFilter.value)) return false;
       return true;
     });
-  }, [results, query, statusFilter, volumeFilter]);
+  }, [results, query, statusFilter, volumeFilter, classificationFilter]);
 
   const selectedCandidate = results.find((item) => candidateKey(item) === selectedKey) ?? filtered[0] ?? results[0];
   const activeMarketWatch = MARKET_WATCHES.find((item) => item.id === marketWatchId) ?? MARKET_WATCHES[0];
@@ -631,6 +635,7 @@ export default function Home() {
     setDirectTicker(null);
     setScanning(true);
     setResults([]);
+    setClassificationFilter(null);
     setProgress({ done: 0, total: 0, failures: 0 });
     setMessage("시장 종목 목록을 불러오는 중");
     try {
@@ -985,6 +990,14 @@ export default function Home() {
               <option value="감소">거래량 감소</option>
             </select>
           </div>
+          {classificationFilter && (
+            <div className="classification-filter">
+              <span>{classificationFilter.kind === "sector" ? "섹터" : "테마"}</span>
+              <button type="button" onClick={() => setClassificationFilter(null)}>
+                {classificationFilter.value} <b>×</b>
+              </button>
+            </div>
+          )}
           <div className="candidate-list">
             {filtered.map((item, index) => (
               <button
@@ -1012,9 +1025,27 @@ export default function Home() {
                     <em className="signal-chip" data-status={item.status}>{item.status}</em>
                     {item.isNasdaq100 && <em className="ndx-chip">NASDAQ 100</em>}
                   </span>
-                  <small>
-                    {item.code} · {item.market} · {item.sector ?? "섹터 확인 중"} · {item.matchedTimeframes?.length === 2 ? "주·월 AND" : item.timeframe === "weekly" ? "주봉" : "월봉"} · {item.matchedMaPeriods?.length === 2 ? "MA10·240 AND" : `MA${item.maPeriod}`} · {formatCap(item.marketCap)}
-                  </small>
+                  <span className="candidate-classification" aria-label={`${item.name} 섹터와 테마`}>
+                    {item.sector ? (
+                      <span
+                        className={`candidate-sector-tag${classificationFilter?.kind === "sector" && classificationFilter.value === item.sector ? " active" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => { event.stopPropagation(); setClassificationFilter({ kind: "sector", value: item.sector! }); }}
+                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setClassificationFilter({ kind: "sector", value: item.sector! }); } }}
+                      >{item.sector}</span>
+                    ) : <span className="candidate-sector-tag pending">섹터 확인 중</span>}
+                    {item.themes?.slice(0, 2).map((theme) => (
+                      <span
+                        key={theme}
+                        className={`candidate-theme-tag${classificationFilter?.kind === "theme" && classificationFilter.value === theme ? " active" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => { event.stopPropagation(); setClassificationFilter({ kind: "theme", value: theme }); }}
+                        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setClassificationFilter({ kind: "theme", value: theme }); } }}
+                      >{theme}</span>
+                    ))}
+                  </span>
                 </span>
                 <span className="candidate-metric">
                   <strong>{item.currency === "USD" ? formatUsd(latestPrices[item.code] ?? item.price ?? item.close) : `${formatPrice(latestPrices[item.code] ?? item.price ?? item.close)}원`}</strong>

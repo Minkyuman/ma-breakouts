@@ -418,6 +418,33 @@ select:focus-visible {
   color: var(--ink);
 }
 
+.classification-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 15px 10px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.classification-filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid rgba(27, 70, 59, 0.18);
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.classification-filter button b {
+  font-size: 13px;
+  line-height: 0.8;
+}
+
 .select-field select {
   height: 36px;
   padding: 0 30px 0 10px;
@@ -832,6 +859,58 @@ select:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.candidate-classification {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.candidate-sector-tag,
+.candidate-theme-tag {
+  display: inline-flex;
+  min-height: 19px;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.candidate-sector-tag {
+  border-color: rgba(27, 70, 59, 0.14);
+  background: #edf3ef;
+  color: var(--green);
+}
+
+.candidate-theme-tag {
+  border-color: rgba(189, 135, 41, 0.16);
+  background: #f8f0df;
+  color: #8a6115;
+}
+
+.candidate-sector-tag.pending {
+  color: var(--muted);
+  background: #f0f1ed;
+  cursor: default;
+}
+
+.candidate-sector-tag:hover:not(.pending),
+.candidate-theme-tag:hover,
+.candidate-sector-tag.active,
+.candidate-theme-tag.active {
+  border-color: currentColor;
+  box-shadow: 0 1px 5px rgba(28, 43, 36, 0.12);
 }
 
 .candidate-title-line {
