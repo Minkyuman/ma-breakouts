@@ -140,11 +140,15 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
   const dragRef = useRef<{ x: number; y: number; start: number } | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ y: number; price: number } | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<{ y: number; price: number } | null>(null);
   const [panStart, setPanStart] = useState(0);
   const [dragging, setDragging] = useState(false);
   const maxPanStart = Math.max(0, points.length - range);
   const visible = useMemo(() => points.slice(panStart, panStart + range), [points, panStart, range]);
-  const active = hoverIndex === null ? visible.at(-1) : visible[hoverIndex];
+  const focusedIndex = hoverIndex ?? selectedIndex;
+  const focusedPoint = hoverPoint ?? selectedPoint;
+  const active = focusedIndex === null ? visible.at(-1) : visible[focusedIndex];
   const candleDirection = active
     ? active.close > active.open
       ? "up"
@@ -157,6 +161,11 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
   useEffect(() => {
     setPanStart(maxPanStart);
   }, [maxPanStart]);
+
+  useEffect(() => {
+    setSelectedIndex(null);
+    setSelectedPoint(null);
+  }, [points, range]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -281,8 +290,8 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
         if (index >= 0 && visible[index]) ctx.fillText(visible[index].date.slice(2), x(index), height - 10);
       });
 
-      if (hoverIndex !== null && visible[hoverIndex]) {
-        const center = x(hoverIndex);
+      if (focusedIndex !== null && visible[focusedIndex]) {
+        const center = x(focusedIndex);
         ctx.strokeStyle = "rgba(27, 69, 58, 0.32)";
         ctx.lineWidth = 0.8;
         ctx.setLineDash([3, 4]);
@@ -292,8 +301,8 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
         ctx.stroke();
         ctx.setLineDash([]);
       }
-      if (hoverPoint) {
-        const hoverY = Math.max(top, Math.min(priceBottom, hoverPoint.y));
+      if (focusedPoint) {
+        const hoverY = Math.max(top, Math.min(priceBottom, focusedPoint.y));
         ctx.strokeStyle = "rgba(27, 69, 58, 0.3)";
         ctx.lineWidth = 0.7;
         ctx.setLineDash([3, 4]);
@@ -302,7 +311,7 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
         ctx.lineTo(width - right + 6, hoverY);
         ctx.stroke();
         ctx.setLineDash([]);
-        const label = number.format(Math.round(hoverPoint.price));
+        const label = number.format(Math.round(focusedPoint.price));
         const labelWidth = Math.max(48, ctx.measureText(label).width + 14);
         ctx.fillStyle = "rgba(27, 69, 58, 0.94)";
         ctx.fillRect(width - labelWidth - 4, hoverY - 10, labelWidth, 20);
@@ -316,7 +325,7 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [visible, hoverIndex, hoverPoint]);
+  }, [visible, focusedIndex, focusedPoint]);
 
   return (
     <div className="chart-wrap">
@@ -325,10 +334,11 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
         className={`chart-canvas${dragging ? " is-dragging" : ""}`}
         role="img"
         aria-label="선택 종목의 캔들, 이동평균선과 거래량 차트"
-        onPointerLeave={() => {
+        onPointerLeave={(event) => {
           if (!dragRef.current) {
             setHoverIndex(null);
             setHoverPoint(null);
+            if (event.pointerType !== "touch") return;
           }
         }}
         onPointerDown={(event) => {
@@ -360,8 +370,8 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
             const maxPrice = Math.max(...highs, ...maValues) * 1.015;
             const y = Math.max(top, Math.min(priceBottom, event.clientY - rect.top));
             const price = maxPrice - ((y - top) / Math.max(priceBottom - top, 1)) * (maxPrice - minPrice);
-            setHoverIndex(index);
-            setHoverPoint({ y, price });
+            setSelectedIndex(index);
+            setSelectedPoint({ y, price });
           }
         }}
         onPointerCancel={() => {
