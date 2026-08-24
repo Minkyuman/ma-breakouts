@@ -101,7 +101,7 @@ function naverStockPageUrl(ticker: Pick<Ticker, "code" | "currency" | "market">)
   if (ticker.currency === "USD") {
     return `https://m.stock.naver.com/worldstock/stock/${encodeURIComponent(ticker.code)}/total`;
   }
-  return `https://finance.naver.com/item/main.naver?code=${encodeURIComponent(ticker.code)}`;
+  return `https://m.stock.naver.com/domestic/stock/${encodeURIComponent(ticker.code)}/total`;
 }
 
 function formatMaybePrice(value: number | null | undefined) {
