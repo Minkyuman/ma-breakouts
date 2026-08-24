@@ -100,7 +100,7 @@ function formatUsd(value: number | null | undefined) {
 function naverStockPageUrl(ticker: Pick<Ticker, "code" | "currency" | "market">) {
   if (ticker.currency === "USD") {
     const exchange = ["NASDAQ", "NYSE", "AMEX"].includes(ticker.market) ? ticker.market : "NASDAQ";
-    return `https://finance.naver.com/world/sise.naver?symbol=${encodeURIComponent(`${exchange}:${ticker.code}`)}`;
+    return `/api/stock-link?market=${encodeURIComponent(exchange)}&code=${encodeURIComponent(ticker.code)}`;
   }
   return `https://finance.naver.com/item/main.naver?code=${encodeURIComponent(ticker.code)}`;
 }

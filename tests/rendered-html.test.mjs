@@ -29,11 +29,12 @@ test("server-renders the 선 넘네 product shell", async () => {
 });
 
 test("ships product metadata and removes the disposable preview", async () => {
-  const [layout, page, styles, packageJson] = await Promise.all([
+  const [layout, page, styles, packageJson, stockLink] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/stock-link/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(layout, /선 넘네\.\./);
   assert.match(layout, /openGraph/);
@@ -78,9 +79,11 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(page, /global-stock-search/);
   assert.match(page, /전체 종목명 또는 코드 검색/);
   assert.match(page, /\/api\/search\?query=/);
-  assert.match(page, /finance\.naver\.com\/world\/sise\.naver/);
+  assert.match(page, /\/api\/stock-link/);
   assert.match(page, /naverStockPageUrl/);
-  assert.doesNotMatch(page, /finance\.yahoo\.com\/quote/);
+  assert.match(stockLink, /finance\.naver\.com\/world\/sise\.naver/);
+  assert.match(stockLink, /존재하지 않는 종목/);
+  assert.match(stockLink, /finance\.yahoo\.com\/quote/);
   assert.match(page, /ScreeningTimeframe/);
   assert.match(page, /runFullScan/);
   assert.match(page, /MARKET PULSE/);
@@ -95,5 +98,6 @@ test("ships product metadata and removes the disposable preview", async () => {
   await access(new URL("../app/api/market-chart/route.ts", import.meta.url));
   await access(new URL("../app/api/universe/route.ts", import.meta.url));
   await access(new URL("../app/api/search/route.ts", import.meta.url));
+  await access(new URL("../app/api/stock-link/route.ts", import.meta.url));
   await access(root);
 });
