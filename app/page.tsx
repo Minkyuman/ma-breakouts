@@ -1026,6 +1026,7 @@ export default function Home() {
                     {item.isNasdaq100 && <em className="ndx-chip">NASDAQ 100</em>}
                   </span>
                   <span className="candidate-classification" aria-label={`${item.name} 섹터와 테마`}>
+                    <span className={`candidate-market-tag ${item.market.toLowerCase()}`}>{item.market}</span>
                     {item.sector ? (
                       <span
                         className={`candidate-sector-tag${classificationFilter?.kind === "sector" && classificationFilter.value === item.sector ? " active" : ""}`}

@@ -872,7 +872,8 @@ select:focus-visible {
 }
 
 .candidate-sector-tag,
-.candidate-theme-tag {
+.candidate-theme-tag,
+.candidate-market-tag {
   display: inline-flex;
   min-height: 19px;
   flex: 0 0 auto;
@@ -885,6 +886,36 @@ select:focus-visible {
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
+}
+
+.candidate-market-tag {
+  background: #edf0f1;
+  color: #53605b;
+}
+
+.candidate-market-tag.kospi {
+  background: #e2eef4;
+  color: #2d667e;
+}
+
+.candidate-market-tag.kosdaq {
+  background: #f2ead8;
+  color: #7b6221;
+}
+
+.candidate-market-tag.nasdaq {
+  background: #e9eefb;
+  color: #3659a8;
+}
+
+.candidate-market-tag.nyse {
+  background: #e9f1ed;
+  color: #246046;
+}
+
+.candidate-market-tag.amex {
+  background: #f2e9f5;
+  color: #765185;
 }
 
 .candidate-sector-tag {
