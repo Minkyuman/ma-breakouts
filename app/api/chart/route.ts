@@ -4,6 +4,7 @@ import {
   fetchTickerDailyChart,
   fetchUsdKrwRate,
   fetchNasdaq100Membership,
+  fetchSecurityClassification,
   historyYears,
   withMovingAverages,
   type ChartTimeframe,
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
     const code = String(params.get("code") ?? "").toUpperCase();
+    const name = String(params.get("name") ?? code).trim();
     const market = String(params.get("market") ?? "").toUpperCase() as Market;
     const isKoreanMarket = market === "KOSPI" || market === "KOSDAQ";
     if (!code || (isKoreanMarket && !/^\d{6}$/.test(code)) || (!isKoreanMarket && !/^[A-Z.\-]{1,12}$/.test(code))) {
@@ -37,10 +39,11 @@ export async function GET(request: Request) {
       weekly: summarizeChange(aggregateCandles(daily, "weekly")),
       monthly: summarizeChange(aggregateCandles(daily, "monthly")),
     };
-    const [exchangeRate, isNasdaq100] = isKoreanMarket
-      ? [undefined, undefined]
-      : await Promise.all([fetchUsdKrwRate(), fetchNasdaq100Membership(code)]);
-    return NextResponse.json({ points: points.slice(-360), timeframe, movingAverages: [5, 10, 240], changes, currency: isKoreanMarket ? "KRW" : "USD", exchangeRate, isNasdaq100 });
+    const classificationPromise = fetchSecurityClassification({ code, name, market });
+    const [classification, exchangeRate, isNasdaq100] = isKoreanMarket
+      ? [await classificationPromise, undefined, undefined]
+      : await Promise.all([classificationPromise, fetchUsdKrwRate(), fetchNasdaq100Membership(code)]);
+    return NextResponse.json({ points: points.slice(-360), timeframe, movingAverages: [5, 10, 240], changes, currency: isKoreanMarket ? "KRW" : "USD", exchangeRate, isNasdaq100, classification });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "차트 데이터를 불러오지 못했습니다." },

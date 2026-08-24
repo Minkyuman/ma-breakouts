@@ -21,6 +21,9 @@ export type Ticker = {
   krwPrice?: number;
   exchangeRate?: number;
   isNasdaq100?: boolean;
+  sector?: string;
+  industry?: string;
+  themes?: string[];
 };
 
 export type DailyRow = {
@@ -222,6 +225,55 @@ export async function fetchNasdaq100Membership(code: string): Promise<boolean> {
     data?: { isNasdaq100?: boolean; symbol?: string };
   }>(`https://api.nasdaq.com/api/quote/${encodeURIComponent(code.toLowerCase())}/info?assetclass=stocks`);
   return payload.data?.isNasdaq100 === true;
+}
+
+export type SecurityClassification = Pick<Ticker, "sector" | "industry" | "themes">;
+
+function inferThemes(...parts: Array<string | undefined>): string[] {
+  const source = parts.filter(Boolean).join(" ").toLowerCase();
+  const rules: Array<[string, RegExp]> = [
+    ["AI", /\bai\b|artificial intelligence|인공지능|생성형/],
+    ["반도체", /semiconductor|chip|반도체|파운드리/],
+    ["2차전지", /battery|secondary battery|2차전지|이차전지|배터리|양극재|음극재|전지재료|전구체/],
+    ["바이오·헬스케어", /biotech|biopharma|pharma|healthcare|제약|바이오|의료/],
+    ["로봇·자동화", /robot|automation|로봇|자동화/],
+    ["전기차", /electric vehicle|\bev\b|전기차/],
+    ["방산", /defen[cs]e|aerospace|방산|항공우주/],
+    ["원전·전력", /nuclear|power grid|utility|원전|전력/],
+    ["클라우드", /cloud|saas|클라우드/],
+    ["금융", /bank|insurance|financial|은행|보험|금융/],
+    ["게임·콘텐츠", /game|gaming|entertainment|게임|콘텐츠/],
+  ];
+  return rules.filter(([, pattern]) => pattern.test(source)).map(([theme]) => theme).slice(0, 3);
+}
+
+async function fetchKoreanClassification(code: string, name: string): Promise<SecurityClassification> {
+  const response = await fetch(`https://finance.naver.com/item/main.naver?code=${encodeURIComponent(code)}`, {
+    headers: NAVER_HEADERS,
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Korean classification request failed (${response.status})`);
+  const html = await response.text();
+  const sector = html.match(/업종명\s*:\s*<a[^>]*>([^<]+)<\/a>/)?.[1]?.trim();
+  const overviewHtml = html.match(/<div id="summary_info"[\s\S]*?<div class="txt_notice">/)?.[0] ?? "";
+  const overview = overviewHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  return { sector, themes: inferThemes(name, sector, overview) };
+}
+
+async function fetchUsClassification(code: string, name: string): Promise<SecurityClassification> {
+  const payload = await fetchUsJson<{
+    data?: { Sector?: { value?: string }; Industry?: { value?: string }; CompanyDescription?: { value?: string } };
+  }>(`https://api.nasdaq.com/api/company/${encodeURIComponent(code.toLowerCase())}/company-profile`);
+  const sector = payload.data?.Sector?.value?.trim();
+  const industry = payload.data?.Industry?.value?.trim();
+  const description = payload.data?.CompanyDescription?.value;
+  return { sector, industry, themes: inferThemes(name, sector, industry, description) };
+}
+
+export async function fetchSecurityClassification(ticker: Pick<Ticker, "code" | "name" | "market">): Promise<SecurityClassification> {
+  return ticker.market === "KOSPI" || ticker.market === "KOSDAQ"
+    ? fetchKoreanClassification(ticker.code, ticker.name)
+    : fetchUsClassification(ticker.code, ticker.name);
 }
 
 let searchUniverseCache: { expiresAt: number; tickers: Ticker[] } | null = null;

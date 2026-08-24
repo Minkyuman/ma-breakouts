@@ -8,6 +8,7 @@ import type {
   ChartPoint,
   MarketFilter,
   Region,
+  SecurityClassification,
   ScreeningMaPeriod,
   ScreeningTimeframe,
   Ticker,
@@ -507,6 +508,7 @@ export default function Home() {
   const [priceChanges, setPriceChanges] = useState<PriceChangeSet>(EMPTY_PRICE_CHANGES);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [indexMembership, setIndexMembership] = useState<boolean | null>(null);
+  const [classification, setClassification] = useState<SecurityClassification | null>(null);
   const [latestPrices, setLatestPrices] = useState<Record<string, number>>({});
   const [chartLoading, setChartLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -551,6 +553,7 @@ export default function Home() {
   };
   const selected = directTicker ?? selectedCandidate ?? marketTicker;
   const selectedSignal = directTicker || isMarketOverview ? undefined : selectedCandidate;
+  const activeClassification = classification ?? (selected.sector ? { sector: selected.sector, industry: selected.industry, themes: selected.themes } : null);
 
   useEffect(() => {
     const normalized = stockQuery.trim();
@@ -588,21 +591,23 @@ export default function Home() {
     setChart([]);
     setPriceChanges(EMPTY_PRICE_CHANGES);
     setIndexMembership(null);
+    setClassification(null);
     const endpoint = isMarketOverview
       ? `/api/market-chart?id=${encodeURIComponent(activeMarketWatch.id)}&timeframe=${chartTimeframe}`
-      : `/api/chart?code=${selected.code}&market=${selected.market}&timeframe=${chartTimeframe}`;
+      : `/api/chart?code=${selected.code}&name=${encodeURIComponent(selected.name)}&market=${selected.market}&timeframe=${chartTimeframe}`;
     fetch(endpoint, {
       signal: controller.signal,
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("차트를 불러오지 못했습니다.");
-        return response.json() as Promise<{ points: ChartPoint[]; changes?: PriceChangeSet; exchangeRate?: number; isNasdaq100?: boolean }>;
+        return response.json() as Promise<{ points: ChartPoint[]; changes?: PriceChangeSet; exchangeRate?: number; isNasdaq100?: boolean; classification?: SecurityClassification }>;
       })
       .then((payload) => {
         setChart(payload.points);
         setPriceChanges(payload.changes ?? EMPTY_PRICE_CHANGES);
         setExchangeRate(payload.exchangeRate ?? selected.exchangeRate ?? null);
         setIndexMembership(payload.isNasdaq100 ?? selected.isNasdaq100 ?? null);
+        setClassification(payload.classification ?? (selected.sector ? { sector: selected.sector, industry: selected.industry, themes: selected.themes } : null));
         const latest = payload.points.at(-1);
         if (latest) {
           setLatestPrices((current) =>
@@ -1008,7 +1013,7 @@ export default function Home() {
                     {item.isNasdaq100 && <em className="ndx-chip">NASDAQ 100</em>}
                   </span>
                   <small>
-                    {item.code} · {item.market} · {item.assetType === "STOCK" ? "주식" : item.assetType} · {item.matchedTimeframes?.length === 2 ? "주·월 AND" : item.timeframe === "weekly" ? "주봉" : "월봉"} · {item.matchedMaPeriods?.length === 2 ? "MA10·240 AND" : `MA${item.maPeriod}`} · {formatCap(item.marketCap)}
+                    {item.code} · {item.market} · {item.sector ?? "섹터 확인 중"} · {item.matchedTimeframes?.length === 2 ? "주·월 AND" : item.timeframe === "weekly" ? "주봉" : "월봉"} · {item.matchedMaPeriods?.length === 2 ? "MA10·240 AND" : `MA${item.maPeriod}`} · {formatCap(item.marketCap)}
                   </small>
                 </span>
                 <span className="candidate-metric">
@@ -1068,6 +1073,8 @@ export default function Home() {
                       {isMarketOverview ? "주요 지수" : selected.assetType === "STOCK" ? "주식" : selected.assetType}
                     </span>
                     {(selected.isNasdaq100 ?? indexMembership) && <span className="ndx-header-tag">NASDAQ 100</span>}
+                    {!isMarketOverview && activeClassification?.sector && <span className="sector-tag">{activeClassification.sector}</span>}
+                    {!isMarketOverview && activeClassification?.themes?.map((theme) => <span className="theme-tag" key={theme}>{theme}</span>)}
                     {directTicker && <span className="direct-view-tag">직접 조회</span>}
                   </div>
                   <p>

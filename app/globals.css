@@ -769,6 +769,30 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+.sector-tag,
+.theme-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 27px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.sector-tag {
+  border: 1px solid rgba(27, 70, 59, 0.16);
+  background: #edf3ef;
+  color: var(--green);
+}
+
+.theme-tag {
+  border: 1px solid rgba(189, 135, 41, 0.18);
+  background: #f8f0df;
+  color: #8a6115;
+}
+
 .ndx-header-tag {
   min-height: 27px;
   padding: 0 10px;

@@ -3,6 +3,7 @@ import {
   screenTicker,
   fetchUsdKrwRate,
   fetchNasdaq100Membership,
+  fetchSecurityClassification,
   type Candidate,
   type MovingAveragePeriod,
   type ScreeningMaPeriod,
@@ -69,14 +70,16 @@ export async function POST(request: Request) {
         ? { ...item, exchangeRate, krwPrice: item.price * exchangeRate }
         : item);
     }
-    const usMatches = matches.filter((item) => item.currency === "USD");
-    const memberships = await Promise.allSettled(
-      usMatches.map(async (item) => ({ code: item.code, isNasdaq100: await fetchNasdaq100Membership(item.code) })),
-    );
-    const membershipByCode = new Map(memberships.flatMap((result) => result.status === "fulfilled" ? [[result.value.code, result.value.isNasdaq100] as const] : []));
-    matches = matches.map((item) => item.currency === "USD"
-      ? { ...item, isNasdaq100: membershipByCode.get(item.code) ?? false }
-      : item);
+    const classified = await Promise.allSettled(matches.map(async (item) => ({
+      code: item.code,
+      classification: await fetchSecurityClassification(item),
+      isNasdaq100: item.currency === "USD" ? await fetchNasdaq100Membership(item.code) : undefined,
+    })));
+    const classificationByCode = new Map(classified.flatMap((result) => result.status === "fulfilled" ? [[result.value.code, result.value] as const] : []));
+    matches = matches.map((item) => {
+      const metadata = classificationByCode.get(item.code);
+      return metadata ? { ...item, ...metadata.classification, isNasdaq100: metadata.isNasdaq100 } : item;
+    });
     return NextResponse.json({
       matches,
       failures,
