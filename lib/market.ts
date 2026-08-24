@@ -20,6 +20,7 @@ export type Ticker = {
   /** USD denominated instruments only. Applied server-side at scan/chart time. */
   krwPrice?: number;
   exchangeRate?: number;
+  isNasdaq100?: boolean;
 };
 
 export type DailyRow = {
@@ -213,6 +214,14 @@ export async function fetchUsdKrwRate(): Promise<number> {
   const rate = payload.rates?.KRW;
   if (!rate || !Number.isFinite(rate)) throw new Error("원/달러 환율을 불러오지 못했습니다.");
   return rate;
+}
+
+/** Nasdaq's quote metadata includes the current NDX constituent flag. */
+export async function fetchNasdaq100Membership(code: string): Promise<boolean> {
+  const payload = await fetchUsJson<{
+    data?: { isNasdaq100?: boolean; symbol?: string };
+  }>(`https://api.nasdaq.com/api/quote/${encodeURIComponent(code.toLowerCase())}/info?assetclass=stocks`);
+  return payload.data?.isNasdaq100 === true;
 }
 
 let searchUniverseCache: { expiresAt: number; tickers: Ticker[] } | null = null;

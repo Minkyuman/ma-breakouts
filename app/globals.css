@@ -752,6 +752,28 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+.ndx-chip,
+.ndx-header-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 19px;
+  padding: 2px 7px;
+  border: 1px solid rgba(58, 88, 171, 0.2);
+  border-radius: 999px;
+  background: #e9eefb;
+  color: #3659a8;
+  font: 700 8px/1 var(--font-geist-mono), monospace;
+  font-style: normal;
+  letter-spacing: 0.015em;
+  white-space: nowrap;
+}
+
+.ndx-header-tag {
+  min-height: 27px;
+  padding: 0 10px;
+  font-size: 9px;
+}
+
 .candidate-main small,
 .candidate-metric small {
   margin-top: 4px;

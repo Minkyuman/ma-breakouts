@@ -3,6 +3,7 @@ import {
   aggregateCandles,
   fetchTickerDailyChart,
   fetchUsdKrwRate,
+  fetchNasdaq100Membership,
   historyYears,
   withMovingAverages,
   type ChartTimeframe,
@@ -36,8 +37,10 @@ export async function GET(request: Request) {
       weekly: summarizeChange(aggregateCandles(daily, "weekly")),
       monthly: summarizeChange(aggregateCandles(daily, "monthly")),
     };
-    const exchangeRate = isKoreanMarket ? undefined : await fetchUsdKrwRate();
-    return NextResponse.json({ points: points.slice(-360), timeframe, movingAverages: [5, 10, 240], changes, currency: isKoreanMarket ? "KRW" : "USD", exchangeRate });
+    const [exchangeRate, isNasdaq100] = isKoreanMarket
+      ? [undefined, undefined]
+      : await Promise.all([fetchUsdKrwRate(), fetchNasdaq100Membership(code)]);
+    return NextResponse.json({ points: points.slice(-360), timeframe, movingAverages: [5, 10, 240], changes, currency: isKoreanMarket ? "KRW" : "USD", exchangeRate, isNasdaq100 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "차트 데이터를 불러오지 못했습니다." },

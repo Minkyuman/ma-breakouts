@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   screenTicker,
   fetchUsdKrwRate,
+  fetchNasdaq100Membership,
   type Candidate,
   type MovingAveragePeriod,
   type ScreeningMaPeriod,
@@ -68,6 +69,14 @@ export async function POST(request: Request) {
         ? { ...item, exchangeRate, krwPrice: item.price * exchangeRate }
         : item);
     }
+    const usMatches = matches.filter((item) => item.currency === "USD");
+    const memberships = await Promise.allSettled(
+      usMatches.map(async (item) => ({ code: item.code, isNasdaq100: await fetchNasdaq100Membership(item.code) })),
+    );
+    const membershipByCode = new Map(memberships.flatMap((result) => result.status === "fulfilled" ? [[result.value.code, result.value.isNasdaq100] as const] : []));
+    matches = matches.map((item) => item.currency === "USD"
+      ? { ...item, isNasdaq100: membershipByCode.get(item.code) ?? false }
+      : item);
     return NextResponse.json({
       matches,
       failures,

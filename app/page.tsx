@@ -506,6 +506,7 @@ export default function Home() {
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [priceChanges, setPriceChanges] = useState<PriceChangeSet>(EMPTY_PRICE_CHANGES);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [indexMembership, setIndexMembership] = useState<boolean | null>(null);
   const [latestPrices, setLatestPrices] = useState<Record<string, number>>({});
   const [chartLoading, setChartLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -586,6 +587,7 @@ export default function Home() {
     setChartLoading(true);
     setChart([]);
     setPriceChanges(EMPTY_PRICE_CHANGES);
+    setIndexMembership(null);
     const endpoint = isMarketOverview
       ? `/api/market-chart?id=${encodeURIComponent(activeMarketWatch.id)}&timeframe=${chartTimeframe}`
       : `/api/chart?code=${selected.code}&market=${selected.market}&timeframe=${chartTimeframe}`;
@@ -594,12 +596,13 @@ export default function Home() {
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("차트를 불러오지 못했습니다.");
-        return response.json() as Promise<{ points: ChartPoint[]; changes?: PriceChangeSet; exchangeRate?: number }>;
+        return response.json() as Promise<{ points: ChartPoint[]; changes?: PriceChangeSet; exchangeRate?: number; isNasdaq100?: boolean }>;
       })
       .then((payload) => {
         setChart(payload.points);
         setPriceChanges(payload.changes ?? EMPTY_PRICE_CHANGES);
         setExchangeRate(payload.exchangeRate ?? selected.exchangeRate ?? null);
+        setIndexMembership(payload.isNasdaq100 ?? selected.isNasdaq100 ?? null);
         const latest = payload.points.at(-1);
         if (latest) {
           setLatestPrices((current) =>
@@ -1002,6 +1005,7 @@ export default function Home() {
                       </em>
                     )}
                     <em className="signal-chip" data-status={item.status}>{item.status}</em>
+                    {item.isNasdaq100 && <em className="ndx-chip">NASDAQ 100</em>}
                   </span>
                   <small>
                     {item.code} · {item.market} · {item.assetType === "STOCK" ? "주식" : item.assetType} · {item.matchedTimeframes?.length === 2 ? "주·월 AND" : item.timeframe === "weekly" ? "주봉" : "월봉"} · {item.matchedMaPeriods?.length === 2 ? "MA10·240 AND" : `MA${item.maPeriod}`} · {formatCap(item.marketCap)}
@@ -1063,6 +1067,7 @@ export default function Home() {
                     <span className={`asset-tag ${selected.assetType.toLowerCase()}`}>
                       {isMarketOverview ? "주요 지수" : selected.assetType === "STOCK" ? "주식" : selected.assetType}
                     </span>
+                    {(selected.isNasdaq100 ?? indexMembership) && <span className="ndx-header-tag">NASDAQ 100</span>}
                     {directTicker && <span className="direct-view-tag">직접 조회</span>}
                   </div>
                   <p>
