@@ -29,20 +29,18 @@ test("server-renders the 선 넘네 product shell", async () => {
 });
 
 test("ships product metadata and removes the disposable preview", async () => {
-  const [layout, page, styles, packageJson, faviconRoute] = await Promise.all([
+  const [layout, page, styles, packageJson] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/favicon/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(layout, /선 넘네\.\./);
   assert.match(layout, /openGraph/);
   assert.match(layout, /brand-mark\.png/);
-  assert.match(layout, /favicon\.svg/);
   assert.match(layout, /favicon\.ico/);
-  assert.match(layout, /\/api\/favicon/);
-  assert.match(faviconRoute, /ImageResponse/);
+  assert.match(layout, /favicon-32\.png/);
+  assert.match(layout, /site\.webmanifest/);
   assert.match(page, /ChartCanvas/);
   assert.match(page, /brand-logo/);
   assert.match(page, /LINE BREAKER/);
@@ -102,7 +100,8 @@ test("ships product metadata and removes the disposable preview", async () => {
   await access(new URL("../app/api/market-chart/route.ts", import.meta.url));
   await access(new URL("../app/api/universe/route.ts", import.meta.url));
   await access(new URL("../app/api/search/route.ts", import.meta.url));
-  await access(new URL("../app/api/favicon/route.ts", import.meta.url));
   await access(new URL("../public/favicon.ico", import.meta.url));
+  await access(new URL("../public/favicon-32.png", import.meta.url));
+  await access(new URL("../public/site.webmanifest", import.meta.url));
   await access(root);
 });

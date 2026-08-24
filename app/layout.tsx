@@ -14,6 +14,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
+    manifest: "/site.webmanifest",
     openGraph: {
       title,
       description,
@@ -29,12 +30,10 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     icons: {
       icon: [
-        { url: "/favicon.ico?v=3", type: "image/x-icon", sizes: "64x64" },
-        { url: "/api/favicon?v=2", type: "image/png", sizes: "64x64" },
-        { url: "/favicon.svg?v=2", type: "image/svg+xml", sizes: "any" },
-        { url: "/brand-mark.png", type: "image/png", sizes: "512x512" },
+        { url: "/favicon-32.png?v=4", type: "image/png", sizes: "32x32" },
+        { url: "/favicon.ico?v=4", type: "image/x-icon", sizes: "64x64" },
       ],
-      shortcut: "/favicon.ico?v=3",
+      shortcut: "/favicon-32.png?v=4",
       apple: [{ url: "/brand-mark.png", type: "image/png" }],
     },
   };

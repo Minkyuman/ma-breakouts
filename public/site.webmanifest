@@ -1,0 +1,19 @@
+{
+  "name": "LINE BREAKER — 선 넘네..",
+  "short_name": "LINE BREAKER",
+  "icons": [
+    {
+      "src": "/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand-mark.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#112d5c",
+  "background_color": "#ccecff",
+  "display": "standalone"
+}
