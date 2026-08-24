@@ -995,32 +995,6 @@ export default function Home() {
             <span>⌕</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="종목명 또는 코드" />
           </label>
-          <div className="quick-filter-chips" aria-label="돌파 상태와 거래량 필터">
-            <div className="quick-filter-group">
-              <span>돌파</span>
-              {(["all", "근접 돌파", "상승 진행", "추격 주의"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`quick-filter-chip status${statusFilter === value ? " active" : ""}`}
-                  data-status={value}
-                  onClick={() => setStatusFilter(value)}
-                >{value === "all" ? "전체" : value.replace(" 돌파", "").replace(" 진행", "").replace(" 주의", "")}</button>
-              ))}
-            </div>
-            <div className="quick-filter-group">
-              <span>거래량</span>
-              {(["all", "증가", "감소"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`quick-filter-chip volume${volumeFilter === value ? " active" : ""}`}
-                  data-volume={value}
-                  onClick={() => setVolumeFilter(value)}
-                >{value === "all" ? "전체" : value}</button>
-              ))}
-            </div>
-          </div>
           {classificationFilters.length > 0 && (
             <div className="classification-filter">
               <span>선택</span>
@@ -1063,7 +1037,15 @@ export default function Home() {
                             : "10·240 AND"}
                       </em>
                     )}
-                    <em className="signal-chip" data-status={item.status}>{item.status}</em>
+                    <span
+                      className={`signal-chip${statusFilter === item.status ? " active" : ""}`}
+                      data-status={item.status}
+                      role="button"
+                      tabIndex={0}
+                      title={`${item.status} 종목만 보기`}
+                      onClick={(event) => { event.stopPropagation(); setStatusFilter((current) => current === item.status ? "all" : item.status); }}
+                      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setStatusFilter((current) => current === item.status ? "all" : item.status); } }}
+                    >{item.status}</span>
                     {item.isNasdaq100 && <em className="ndx-chip">NASDAQ 100</em>}
                   </span>
                   <span className="candidate-classification" aria-label={`${item.name} 섹터와 테마`}>
@@ -1101,7 +1083,14 @@ export default function Home() {
                   <small className={item.gapPct < 0 ? "down" : "up"}>
                     이격{item.matchedTimeframes?.length === 2 ? "(주)" : ""} {signed(item.gapPct, 2)}
                   </small>
-                  <small className={item.volumeStatus === "감소" ? "down" : "up"}>
+                  <small
+                    className={`candidate-volume-filter ${item.volumeStatus === "감소" ? "down" : "up"}${volumeFilter === item.volumeStatus ? " active" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    title={`거래량 ${item.volumeStatus} 종목만 보기`}
+                    onClick={(event) => { event.stopPropagation(); setVolumeFilter((current) => current === item.volumeStatus ? "all" : item.volumeStatus); }}
+                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setVolumeFilter((current) => current === item.volumeStatus ? "all" : item.volumeStatus); } }}
+                  >
                     거래량 {signed(item.volumeChangePct)}
                   </small>
                 </span>

@@ -1113,6 +1113,12 @@ select:focus-visible {
   color: #a54431;
 }
 
+.signal-chip.active {
+  outline: 1px solid currentColor;
+  outline-offset: 1px;
+  box-shadow: 0 2px 5px rgba(28, 43, 36, 0.11);
+}
+
 .candidate-metric {
   text-align: right;
 }
@@ -1134,6 +1140,17 @@ select:focus-visible {
 .candidate-metric .down,
 .negative {
   color: var(--blue);
+}
+
+.candidate-volume-filter {
+  cursor: pointer;
+}
+
+.candidate-volume-filter.active {
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 .empty-state,
