@@ -456,6 +456,48 @@ select:focus-visible {
   line-height: 0.8;
 }
 
+.classification-filter .classification-filter-chip.sector {
+  border-color: rgba(27, 70, 59, 0.18);
+  background: #edf3ef;
+  color: var(--green);
+}
+
+.classification-filter .classification-filter-chip.theme {
+  border-color: rgba(189, 135, 41, 0.2);
+  background: #f8f0df;
+  color: #8a6115;
+}
+
+.classification-filter .classification-filter-chip.market.kospi {
+  border-color: rgba(45, 102, 126, 0.18);
+  background: #e2eef4;
+  color: #2d667e;
+}
+
+.classification-filter .classification-filter-chip.market.kosdaq {
+  border-color: rgba(123, 98, 33, 0.18);
+  background: #f2ead8;
+  color: #7b6221;
+}
+
+.classification-filter .classification-filter-chip.market.nasdaq {
+  border-color: rgba(54, 89, 168, 0.18);
+  background: #e9eefb;
+  color: #3659a8;
+}
+
+.classification-filter .classification-filter-chip.market.nyse {
+  border-color: rgba(36, 96, 70, 0.18);
+  background: #e9f1ed;
+  color: #246046;
+}
+
+.classification-filter .classification-filter-chip.market.amex {
+  border-color: rgba(118, 81, 133, 0.18);
+  background: #f2e9f5;
+  color: #765185;
+}
+
 .classification-filter button.clear-all {
   border-color: transparent;
   background: transparent;

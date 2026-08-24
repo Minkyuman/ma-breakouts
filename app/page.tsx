@@ -1013,7 +1013,12 @@ export default function Home() {
               <span>선택</span>
               <div>
                 {classificationFilters.map((filter) => (
-                  <button key={`${filter.kind}:${filter.value}`} type="button" onClick={() => toggleClassificationFilter(filter)}>
+                  <button
+                    key={`${filter.kind}:${filter.value}`}
+                    type="button"
+                    className={`classification-filter-chip ${filter.kind}${filter.kind === "market" ? ` ${filter.value.toLowerCase()}` : ""}`}
+                    onClick={() => toggleClassificationFilter(filter)}
+                  >
                     {filter.value} <b>×</b>
                   </button>
                 ))}
