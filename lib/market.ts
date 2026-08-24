@@ -7,7 +7,6 @@ export type ChartTimeframe = "daily" | Timeframe;
 export type ScreeningTimeframe = Timeframe | "both";
 export type MovingAveragePeriod = 10 | 240;
 export type ScreeningMaPeriod = MovingAveragePeriod | "both";
-export type PatternFilter = "none" | "inverse_head_shoulders" | "head_shoulders" | "both";
 
 export type Ticker = {
   code: string;
@@ -58,17 +57,6 @@ export type Candidate = Ticker & {
   volumeChangePct: number | null;
   volumeStatus: "증가" | "감소" | "동일" | "비교 불가";
   status: "근접 돌파" | "상승 진행" | "추격 주의";
-  pattern?: PatternSignal;
-};
-
-export type PatternSignal = {
-  type: Exclude<PatternFilter, "none" | "both">;
-  label: "역헤드앤숄더" | "헤드앤숄더";
-  leftDate: string;
-  headDate: string;
-  rightDate: string;
-  neckline: number;
-  score: number;
 };
 
 const NAVER_HEADERS = {
@@ -266,81 +254,6 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function findPivots(candles: PeriodCandle[], direction: "high" | "low", radius = 3) {
-  const pivots: number[] = [];
-  for (let index = radius; index < candles.length - radius; index += 1) {
-    const price = candles[index][direction];
-    const neighborhood = candles.slice(index - radius, index + radius + 1).map((candle) => candle[direction]);
-    const isPivot = direction === "low" ? price === Math.min(...neighborhood) : price === Math.max(...neighborhood);
-    if (isPivot) pivots.push(index);
-  }
-  return pivots;
-}
-
-function detectHeadAndShoulders(candles: PeriodCandle[], inverse: boolean): PatternSignal | null {
-  const start = Math.max(0, candles.length - 220);
-  const recent = candles.slice(start);
-  const pivotDirection = inverse ? "low" : "high";
-  const pivots = findPivots(recent, pivotDirection);
-  let best: PatternSignal | null = null;
-
-  for (let leftPosition = 0; leftPosition < pivots.length - 2; leftPosition += 1) {
-    for (let headPosition = leftPosition + 1; headPosition < pivots.length - 1; headPosition += 1) {
-      for (let rightPosition = headPosition + 1; rightPosition < pivots.length; rightPosition += 1) {
-        const leftIndex = pivots[leftPosition];
-        const headIndex = pivots[headPosition];
-        const rightIndex = pivots[rightPosition];
-        if (headIndex - leftIndex < 8 || rightIndex - headIndex < 8 || rightIndex - leftIndex > 120) continue;
-        if (recent.length - 1 - rightIndex < 3 || recent.length - 1 - rightIndex > 70) continue;
-
-        const left = recent[leftIndex][pivotDirection];
-        const head = recent[headIndex][pivotDirection];
-        const right = recent[rightIndex][pivotDirection];
-        const shoulderAverage = (left + right) / 2;
-        const shoulderDifference = Math.abs(left - right) / Math.max(shoulderAverage, 1);
-        if (shoulderDifference > 0.06) continue;
-        const headSeparation = inverse
-          ? (Math.min(left, right) - head) / Math.max(Math.min(left, right), 1)
-          : (head - Math.max(left, right)) / Math.max(Math.max(left, right), 1);
-        if (headSeparation < 0.04) continue;
-
-        const leftNeck = inverse
-          ? Math.max(...recent.slice(leftIndex, headIndex + 1).map((candle) => candle.high))
-          : Math.min(...recent.slice(leftIndex, headIndex + 1).map((candle) => candle.low));
-        const rightNeck = inverse
-          ? Math.max(...recent.slice(headIndex, rightIndex + 1).map((candle) => candle.high))
-          : Math.min(...recent.slice(headIndex, rightIndex + 1).map((candle) => candle.low));
-        const neckline = (leftNeck + rightNeck) / 2;
-        const current = recent.at(-1)!;
-        const necklineBroken = inverse ? current.close > neckline : current.close < neckline;
-        if (!necklineBroken) continue;
-
-        const symmetry = Math.min(headIndex - leftIndex, rightIndex - headIndex) /
-          Math.max(headIndex - leftIndex, rightIndex - headIndex);
-        const score = Math.round((headSeparation * 100 * 4 + (1 - shoulderDifference / 0.06) * 35 + symmetry * 25) * 10) / 10;
-        const signal: PatternSignal = {
-          type: inverse ? "inverse_head_shoulders" : "head_shoulders",
-          label: inverse ? "역헤드앤숄더" : "헤드앤숄더",
-          leftDate: recent[leftIndex].date,
-          headDate: recent[headIndex].date,
-          rightDate: recent[rightIndex].date,
-          neckline,
-          score,
-        };
-        if (!best || signal.score > best.score) best = signal;
-      }
-    }
-  }
-  return best;
-}
-
-export function detectChartPattern(candles: PeriodCandle[], filter: PatternFilter): PatternSignal | null {
-  if (filter === "none") return null;
-  const inverse = filter === "head_shoulders" ? null : detectHeadAndShoulders(candles, true);
-  if (inverse) return inverse;
-  return filter === "inverse_head_shoulders" ? null : detectHeadAndShoulders(candles, false);
-}
-
 export function screenCandles(
   ticker: Ticker,
   candles: PeriodCandle[],
@@ -403,12 +316,7 @@ export async function screenTicker(
   ticker: Ticker,
   timeframe: Timeframe,
   maPeriod: MovingAveragePeriod,
-  patternFilter: PatternFilter = "none",
 ): Promise<Candidate | null> {
-  const requiredYears = Math.max(historyYears(timeframe, maPeriod), patternFilter === "none" ? 0 : 2);
-  const daily = await fetchDailyChart(ticker.code, requiredYears);
-  const candidate = screenCandles(ticker, aggregateCandles(daily, timeframe), maPeriod, timeframe);
-  if (!candidate) return null;
-  const pattern = detectChartPattern(aggregateCandles(daily, "daily"), patternFilter);
-  return patternFilter === "none" || pattern ? { ...candidate, ...(pattern ? { pattern } : {}) } : null;
+  const daily = await fetchDailyChart(ticker.code, historyYears(timeframe, maPeriod));
+  return screenCandles(ticker, aggregateCandles(daily, timeframe), maPeriod, timeframe);
 }
