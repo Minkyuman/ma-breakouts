@@ -230,11 +230,18 @@ export async function fetchNasdaq100Membership(code: string): Promise<boolean> {
 export type SecurityClassification = Pick<Ticker, "sector" | "industry" | "themes">;
 
 function inferThemes(...parts: Array<string | undefined>): string[] {
-  const source = parts.filter(Boolean).join(" ").toLowerCase();
+  // "제약용 포장재"처럼 제품의 사용처를 나타내는 표현은 제약·바이오
+  // 사업 영위와 다르므로 테마 판정 전에 제외한다.
+  const source = parts
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replaceAll("제약용", "")
+    .replaceAll("pharmaceutical packaging", "");
   const rules: Array<[string, RegExp]> = [
     ["AI", /\bai\b|artificial intelligence|인공지능|생성형/],
     ["반도체", /semiconductor|chip|반도체|파운드리/],
-    ["2차전지", /battery|secondary battery|2차전지|이차전지|배터리|양극재|음극재|전지재료|전구체/],
+    ["2차전지", /battery|secondary battery|\blib\b|lithium[- ]ion|2차전지|이차전지|배터리|양극재|음극재|전지재료|전구체/],
     ["바이오·헬스케어", /biotech|biopharma|pharma|healthcare|제약|바이오|의료/],
     ["로봇·자동화", /robot|automation|로봇|자동화/],
     ["전기차", /electric vehicle|\bev\b|전기차/],
