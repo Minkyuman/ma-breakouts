@@ -126,6 +126,9 @@ type PriceChangePeriod = "daily" | "weekly" | "monthly";
 type PriceChangeSet = Record<PriceChangePeriod, PriceChangeSummary | null>;
 
 const EMPTY_PRICE_CHANGES: PriceChangeSet = { daily: null, weekly: null, monthly: null };
+const CHART_RANGE_MIN = 10;
+const CHART_RANGE_MAX = 360;
+const CHART_RANGE_STEP = 5;
 
 function candidateKey(item: Pick<Candidate, "code" | "timeframe" | "maPeriod">) {
   return `${item.code}:${item.timeframe}:${item.maPeriod}`;
@@ -135,9 +138,19 @@ function compareCandidates(a: Candidate, b: Candidate) {
   return b.marketCap - a.marketCap || a.code.localeCompare(b.code) || a.timeframe.localeCompare(b.timeframe);
 }
 
-function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number }) {
+function ChartCanvas({
+  points,
+  range,
+  onRangeChange,
+}: {
+  points: ChartPoint[];
+  range: number;
+  onRangeChange: (range: number) => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const dragRef = useRef<{ x: number; y: number; start: number } | null>(null);
+  const dragRef = useRef<{ pointerId: number; x: number; y: number; start: number } | null>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ distance: number; range: number } | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [hoverPoint, setHoverPoint] = useState<{ y: number; price: number } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -343,17 +356,37 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
         }}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
-          dragRef.current = { x: event.clientX, y: event.clientY, start: panStart };
+          pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          const pointers = [...pointersRef.current.values()];
+          if (pointers.length >= 2) {
+            pinchRef.current = {
+              distance: Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y),
+              range,
+            };
+            dragRef.current = null;
+          } else {
+            dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, start: panStart };
+          }
           setDragging(true);
           setHoverIndex(null);
           setHoverPoint(null);
         }}
         onPointerUp={(event) => {
           const dragStart = dragRef.current;
-          if (dragStart) event.currentTarget.releasePointerCapture(event.pointerId);
+          const wasPinching = pinchRef.current !== null;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+          pointersRef.current.delete(event.pointerId);
           dragRef.current = null;
-          setDragging(false);
-          if (dragStart && Math.hypot(event.clientX - dragStart.x, event.clientY - dragStart.y) < 8) {
+          const remainingPointers = [...pointersRef.current.entries()];
+          if (remainingPointers.length === 1) {
+            const [pointerId, pointer] = remainingPointers[0];
+            pinchRef.current = null;
+            dragRef.current = { pointerId, x: pointer.x, y: pointer.y, start: panStart };
+          } else if (!remainingPointers.length) {
+            pinchRef.current = null;
+            setDragging(false);
+          }
+          if (!wasPinching && dragStart?.pointerId === event.pointerId && Math.hypot(event.clientX - dragStart.x, event.clientY - dragStart.y) < 8) {
             const rect = event.currentTarget.getBoundingClientRect();
             const left = 10;
             const right = 62;
@@ -374,16 +407,32 @@ function ChartCanvas({ points, range }: { points: ChartPoint[]; range: number })
             setSelectedPoint({ y, price });
           }
         }}
-        onPointerCancel={() => {
+        onPointerCancel={(event) => {
+          pointersRef.current.delete(event.pointerId);
+          pinchRef.current = null;
           dragRef.current = null;
           setDragging(false);
         }}
         onPointerMove={(event) => {
+          pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
           const rect = event.currentTarget.getBoundingClientRect();
           const left = 10;
           const right = 62;
           const top = 18;
           const priceBottom = rect.height * 0.69;
+          const pointers = [...pointersRef.current.values()];
+          if (pointers.length >= 2 && pinchRef.current) {
+            const distance = Math.hypot(pointers[0].x - pointers[1].x, pointers[0].y - pointers[1].y);
+            if (distance > 0) {
+              const rawRange = pinchRef.current.range * (pinchRef.current.distance / distance);
+              const nextRange = Math.max(
+                CHART_RANGE_MIN,
+                Math.min(CHART_RANGE_MAX, Math.round(rawRange / CHART_RANGE_STEP) * CHART_RANGE_STEP),
+              );
+              onRangeChange(nextRange);
+            }
+            return;
+          }
           if (dragRef.current) {
             const plotWidth = rect.width - left - right;
       const xStep = plotWidth / Math.max(visible.length, 1);
@@ -1065,19 +1114,19 @@ export default function Home() {
                       <span className="range-side-label">좁게</span>
                       <input
                         type="range"
-            min="10"
-            max="360"
-                        step="5"
+            min={CHART_RANGE_MIN}
+            max={CHART_RANGE_MAX}
+                        step={CHART_RANGE_STEP}
                         value={range}
                         aria-label="차트 표시 봉 수"
-            style={{ background: `linear-gradient(90deg, var(--green) ${((range - 10) / 350) * 100}%, #dfe2dc ${((range - 10) / 350) * 100}% 100%)` }}
+            style={{ background: `linear-gradient(90deg, var(--green) ${((range - CHART_RANGE_MIN) / (CHART_RANGE_MAX - CHART_RANGE_MIN)) * 100}%, #dfe2dc ${((range - CHART_RANGE_MIN) / (CHART_RANGE_MAX - CHART_RANGE_MIN)) * 100}% 100%)` }}
                         onChange={(event) => setRange(Number(event.target.value))}
                       />
                       <span className="range-side-label">넓게</span>
                     </div>
                   </div>
                 </div>
-                {chartLoading ? <div className="chart-loading">차트를 불러오는 중…</div> : <ChartCanvas points={chart} range={range} />}
+                {chartLoading ? <div className="chart-loading">차트를 불러오는 중…</div> : <ChartCanvas points={chart} range={range} onRangeChange={setRange} />}
               </div>
 
               <div className="evidence-grid">
