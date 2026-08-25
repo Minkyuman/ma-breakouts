@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSession, unauthorized } from "@/lib/auth";
 import { aggregateCandles, withMovingAverages, type ChartTimeframe, type DailyRow } from "@/lib/market";
 
 type MarketWatch = {
@@ -89,6 +90,7 @@ function summarize(candles: ReturnType<typeof aggregateCandles>) {
 }
 
 export async function GET(request: Request) {
+  if (!(await getSession(request))) return unauthorized();
   try {
     const params = new URL(request.url).searchParams;
     const watch = MARKET_WATCHES.find((item) => item.id === params.get("id"));

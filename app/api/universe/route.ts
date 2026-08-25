@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { getSession, unauthorized } from "@/lib/auth";
 import { fetchUniverse, fetchUsUniverse, type AssetFilter, type MarketFilter, type Region } from "@/lib/market";
 
 export async function GET(request: Request) {
+  if (!(await getSession(request))) return unauthorized();
   try {
     const params = new URL(request.url).searchParams;
     const region: Region = params.get("region") === "us" ? "us" : "kr";

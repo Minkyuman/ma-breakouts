@@ -4,18 +4,26 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-async function render() {
+async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
   return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
+    new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
 }
 
-test("server-renders the 선 넘네 product shell", async () => {
+test("rejects unauthenticated market-data API requests", async () => {
+  for (const path of ["/api/chart?code=005930&market=KOSPI", "/api/search?query=삼성", "/api/universe"]) {
+    const response = await render(path);
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "로그인이 필요합니다." });
+  }
+});
+
+test("server-renders the Google login gate before the product shell", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -24,7 +32,8 @@ test("server-renders the 선 넘네 product shell", async () => {
   assert.match(html, /LINE BREAKER/);
   assert.match(html, /brand-mark\.png/);
   assert.match(html, /한·미 주식 이평 돌파 차트/);
-  assert.match(html, /전 종목 새로 스캔/);
+  assert.match(html, /로그인 상태 확인 중/);
+  assert.doesNotMatch(html, /전 종목 새로 스캔/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -45,6 +54,10 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(page, /brand-logo/);
   assert.match(page, /LINE BREAKER/);
   assert.match(page, /KOREA &amp; U\.S\. MARKETS/);
+  assert.match(page, /Google로 계속하기/);
+  assert.match(page, /\/api\/auth\/session/);
+  assert.match(page, /\/api\/auth\/google\/start/);
+  assert.match(page, /\/api\/auth\/logout/);
   assert.match(page, /ctx\.lineWidth = 0\.8/);
   assert.match(page, /MA 5/);
   assert.match(page, /MA 10/);
@@ -100,6 +113,11 @@ test("ships product metadata and removes the disposable preview", async () => {
   await access(new URL("../app/api/market-chart/route.ts", import.meta.url));
   await access(new URL("../app/api/universe/route.ts", import.meta.url));
   await access(new URL("../app/api/search/route.ts", import.meta.url));
+  await access(new URL("../app/api/auth/google/start/route.ts", import.meta.url));
+  await access(new URL("../app/api/auth/google/callback/route.ts", import.meta.url));
+  await access(new URL("../app/api/auth/session/route.ts", import.meta.url));
+  await access(new URL("../app/api/auth/logout/route.ts", import.meta.url));
+  await access(new URL("../lib/auth.ts", import.meta.url));
   await access(new URL("../public/favicon.ico", import.meta.url));
   await access(new URL("../public/favicon-32.png", import.meta.url));
   await access(new URL("../public/site.webmanifest", import.meta.url));

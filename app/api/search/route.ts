@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { getSession, unauthorized } from "@/lib/auth";
 import { searchUniverse } from "@/lib/market";
 
 export async function GET(request: Request) {
+  if (!(await getSession(request))) return unauthorized();
   try {
     const params = new URL(request.url).searchParams;
     const query = params.get("query") ?? "";

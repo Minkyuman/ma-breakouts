@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSession, unauthorized } from "@/lib/auth";
 import {
   aggregateCandles,
   fetchTickerDailyChart,
@@ -20,13 +21,14 @@ function summarizeChange(candles: Array<{ close: number }>) {
 }
 
 export async function GET(request: Request) {
+  if (!(await getSession(request))) return unauthorized();
   try {
     const params = new URL(request.url).searchParams;
     const code = String(params.get("code") ?? "").toUpperCase();
     const name = String(params.get("name") ?? code).trim();
     const market = String(params.get("market") ?? "").toUpperCase() as Market;
     const isKoreanMarket = market === "KOSPI" || market === "KOSDAQ";
-    if (!code || (isKoreanMarket && !/^\d{6}$/.test(code)) || (!isKoreanMarket && !/^[A-Z.\-]{1,12}$/.test(code))) {
+    if (!code || (isKoreanMarket && !/^\d{6}$/.test(code)) || (!isKoreanMarket && !/^[A-Z.-]{1,12}$/.test(code))) {
       return NextResponse.json({ error: "올바른 종목코드가 아닙니다." }, { status: 400 });
     }
     const timeframeValue = params.get("timeframe");

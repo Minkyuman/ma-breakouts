@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { AuthUser } from "@/lib/auth";
 import type {
   AssetFilter,
   Candidate,
@@ -494,7 +495,72 @@ function ChartCanvas({
   );
 }
 
+type AuthStatus =
+  | { phase: "loading" }
+  | { phase: "signed-out"; configured: boolean; error?: string }
+  | { phase: "signed-in"; user: AuthUser };
+
+function LoginGate({ status }: { status: Exclude<AuthStatus, { phase: "signed-in" }> }) {
+  const isLoading = status.phase === "loading";
+  const configured = status.phase === "signed-out" && status.configured;
+  const oauthError = status.phase === "signed-out" ? status.error : undefined;
+  return (
+    <main className="login-shell">
+      <section className="login-card" aria-busy={isLoading}>
+        <img className="login-logo" src="/brand-mark.png" alt="선 넘네.." />
+        <p className="login-eyebrow">KOREA &amp; U.S. MARKETS</p>
+        <h1>LINE BREAKER</h1>
+        <p className="login-description">한·미 주식의 MA10·MA240 돌파 신호를 확인하세요.</p>
+        {isLoading ? (
+          <div className="auth-loading"><span />로그인 상태 확인 중</div>
+        ) : configured ? (
+          <a className="google-login-button" href="/api/auth/google/start">
+            <span className="google-g" aria-hidden="true">G</span>
+            Google로 계속하기
+          </a>
+        ) : (
+          <div className="auth-config-message">
+            <strong>Google 로그인을 준비하고 있습니다.</strong>
+            <span>OAuth 환경변수 설정 후 이용할 수 있습니다.</span>
+          </div>
+        )}
+        {oauthError && oauthError !== "config" && (
+          <p className="auth-error">로그인을 완료하지 못했습니다. 다시 시도해 주세요.</p>
+        )}
+        <small className="login-privacy">로그인 정보는 서비스 인증에만 사용됩니다.</small>
+      </section>
+    </main>
+  );
+}
+
 export default function Home() {
+  const [authStatus, setAuthStatus] = useState<AuthStatus>({ phase: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const error = new URLSearchParams(window.location.search).get("auth_error") ?? undefined;
+    fetch("/api/auth/session", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("인증 상태를 확인하지 못했습니다.");
+        return response.json() as Promise<{ authenticated: boolean; configured: boolean; user: AuthUser | null }>;
+      })
+      .then((payload) => {
+        if (payload.authenticated && payload.user) setAuthStatus({ phase: "signed-in", user: payload.user });
+        else setAuthStatus({ phase: "signed-out", configured: payload.configured, error });
+      })
+      .catch((fetchError) => {
+        if (fetchError instanceof Error && fetchError.name !== "AbortError") {
+          setAuthStatus({ phase: "signed-out", configured: false, error: "session" });
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  if (authStatus.phase !== "signed-in") return <LoginGate status={authStatus} />;
+  return <Dashboard authUser={authStatus.user} />;
+}
+
+function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [region, setRegion] = useState<Region>("kr");
   const [timeframe, setTimeframe] = useState<ScreeningTimeframe>("weekly");
   const [maPeriod, setMaPeriod] = useState<ScreeningMaPeriod>(240);
@@ -901,6 +967,11 @@ export default function Home() {
             <span className="live-dot" />
             <span>실시간 데이터 연결</span>
             <span className="clock-separator">KST</span>
+          </div>
+          <div className="account-menu" title={authUser.email}>
+            {authUser.picture ? <img src={authUser.picture} alt="" referrerPolicy="no-referrer" /> : <span>{authUser.name.slice(0, 1)}</span>}
+            <div><strong>{authUser.name}</strong><small>{authUser.email}</small></div>
+            <a href="/api/auth/logout">로그아웃</a>
           </div>
         </div>
       </header>

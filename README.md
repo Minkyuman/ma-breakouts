@@ -26,7 +26,8 @@
 - 마우스 오버 가로·세로 가격 가이드
 - 차트 좌우 드래그 이동과 표시 범위 조절
 - 종목명 클릭 시 네이버 금융 상세 페이지 열기
-- 미국 종목명 클릭 시 Yahoo Finance 상세 페이지 열기
+- 미국 종목명 클릭 시 네이버 해외증권 상세 페이지 열기
+- Google 로그인 후에만 대시보드와 시장 데이터 API 이용 가능
 - 로고 확대 모달과 이메일 연락 링크
 
 ## 돌파 판정
@@ -59,10 +60,32 @@ AND 조건은 동일 종목의 동일 기준 봉에서 모든 조건을 만족�
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
 브라우저에서 [http://localhost:3000](http://localhost:3000)을 엽니다.
+
+## Google 로그인 설정
+
+Google Cloud Console에서 OAuth 동의 화면을 구성하고 `웹 애플리케이션` 유형의 OAuth 클라이언트를 생성합니다. 승인된 리디렉션 URI에는 사용하는 환경에 맞춰 아래 주소를 정확히 등록합니다.
+
+```text
+http://localhost:3000/api/auth/google/callback
+https://stock-chart-screener-web.vercel.app/api/auth/google/callback
+```
+
+`.env.local`에 다음 값을 설정합니다. `AUTH_SECRET`은 세션 쿠키 서명용으로 충분히 긴 무작위 값을 사용합니다.
+
+```dotenv
+GOOGLE_CLIENT_ID=Google에서 발급한 클라이언트_ID
+GOOGLE_CLIENT_SECRET=Google에서 발급한_클라이언트_보안_비밀번호
+AUTH_SECRET=openssl_rand_base64_32_등으로_생성한_값
+AUTH_BASE_URL=http://localhost:3000
+AUTH_ALLOWED_EMAILS=minkyuman@gmail.com
+```
+
+운영 환경에서는 같은 변수의 Vercel Production 환경값을 등록하되 `AUTH_BASE_URL`을 `https://stock-chart-screener-web.vercel.app`으로 설정합니다. `AUTH_ALLOWED_EMAILS`는 선택 사항이며, 비워 두면 검증된 모든 Google 계정을 허용하고 쉼표로 이메일을 지정하면 해당 계정만 허용합니다. 비밀값은 저장소에 커밋하지 않습니다. 구현은 Google OpenID Connect의 `openid email profile` 범위를 사용하며 로그인 세션은 서명된 HttpOnly 쿠키로 7일간 유지됩니다.
 
 ## 검증 명령
 
@@ -79,10 +102,12 @@ npm test
 app/
   page.tsx                 화면·차트·스크리닝 UI
   globals.css              디자인 시스템과 반응형 스타일
+  api/auth/                Google OAuth·세션·로그아웃
   api/universe/route.ts    전체 종목 목록
   api/screen/route.ts      배치 스크리닝
   api/chart/route.ts       차트 데이터
   api/search/route.ts      종목 검색
+lib/auth.ts                세션 서명·검증과 인증 공통 처리
 lib/market.ts              시장 데이터, 집계, 이동평균, 돌파 판정
 public/brand-mark.png      선 넘네.. 브랜드 마크
 tests/                     서버 렌더링 회귀 테스트
@@ -102,6 +127,8 @@ npx vercel --prod
 ```
 
 현재 프로덕션은 Vercel CLI로 배포되어 있습니다. GitHub 푸시마다 자동 배포하려면 Vercel 대시보드에서 GitHub Login Connection을 추가한 뒤 이 저장소를 Vercel 프로젝트에 연결하고, 사용할 프로덕션 브랜치를 지정하면 됩니다.
+
+Google 로그인을 활성화한 배포 전에는 Vercel 프로젝트의 Production 환경변수에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET`, `AUTH_BASE_URL`을 먼저 등록해야 합니다. 개인 전용 서비스라면 `AUTH_ALLOWED_EMAILS`도 함께 등록합니다.
 
 ## 라이선스·투자 주의
 

@@ -49,6 +49,127 @@ body {
   min-width: 320px;
 }
 
+.login-shell {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+}
+
+.login-card {
+  width: min(100%, 430px);
+  display: grid;
+  justify-items: center;
+  padding: 42px 38px 34px;
+  border: 1px solid rgba(23, 33, 29, 0.12);
+  border-radius: 28px;
+  background: rgba(255, 253, 250, 0.94);
+  box-shadow: 0 28px 80px rgba(28, 43, 36, 0.12);
+  text-align: center;
+  backdrop-filter: blur(18px);
+}
+
+.login-logo {
+  width: 108px;
+  height: 108px;
+  border-radius: 22%;
+  object-fit: contain;
+  filter: drop-shadow(0 9px 18px rgba(21, 39, 78, 0.14));
+}
+
+.login-eyebrow {
+  margin: 22px 0 7px;
+  color: var(--muted);
+  font: 650 10px/1.2 var(--font-geist-mono), monospace;
+  letter-spacing: 0.18em;
+}
+
+.login-card h1 {
+  margin: 0;
+  color: var(--green-deep);
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.login-description {
+  margin: 18px 0 26px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.google-login-button {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid #d8dcd8;
+  border-radius: 13px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 7px 20px rgba(28, 43, 36, 0.06);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.google-login-button:hover {
+  border-color: #aeb8b2;
+  box-shadow: 0 10px 24px rgba(28, 43, 36, 0.1);
+  transform: translateY(-1px);
+}
+
+.google-g {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border: 1px solid #dde1df;
+  border-radius: 50%;
+  color: #4285f4;
+  font: 800 15px/1 Arial, sans-serif;
+}
+
+.auth-loading {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auth-loading span {
+  width: 17px;
+  height: 17px;
+  border: 2px solid var(--line);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: auth-spin 800ms linear infinite;
+}
+
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+
+.auth-config-message {
+  width: 100%;
+  display: grid;
+  gap: 5px;
+  padding: 15px;
+  border: 1px solid #ead8b4;
+  border-radius: 12px;
+  background: #fbf4e6;
+  color: #76571f;
+  font-size: 12px;
+}
+
+.auth-config-message strong { font-size: 13px; }
+.auth-error { margin: 13px 0 0; color: var(--red); font-size: 12px; }
+.login-privacy { margin-top: 20px; color: #929b96; font-size: 10px; }
+
 button,
 input,
 select {
@@ -213,6 +334,65 @@ select:focus-visible {
 .topbar-actions {
   gap: 10px;
 }
+
+.account-menu {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 5px 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255, 253, 250, 0.86);
+}
+
+.account-menu > img,
+.account-menu > span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: var(--green);
+  object-fit: cover;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.account-menu > div {
+  min-width: 0;
+  display: grid;
+  line-height: 1.2;
+}
+
+.account-menu strong {
+  max-width: 92px;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu small {
+  max-width: 112px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu a {
+  padding: 7px 8px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.account-menu a:hover { background: var(--green-soft); color: var(--green); }
 
 .global-stock-search {
   position: relative;
@@ -1835,6 +2015,8 @@ footer p {
 }
 
 @media (max-width: 1120px) {
+  .account-menu > div { display: none; }
+
   .control-deck {
     grid-template-columns: auto auto 112px 132px auto;
   }
@@ -1873,6 +2055,9 @@ footer p {
   .market-clock {
     padding: 9px;
   }
+
+  .account-menu { padding-right: 4px; }
+  .account-menu a { padding: 7px 5px; }
 
   .global-stock-search input {
     width: min(38vw, 270px);
@@ -1932,6 +2117,10 @@ footer p {
 }
 
 @media (max-width: 520px) {
+  .login-shell { padding: 16px; }
+  .login-card { padding: 32px 22px 27px; border-radius: 22px; }
+  .login-logo { width: 92px; height: 92px; }
+
   .brand-lockup .eyebrow {
     display: none;
   }
@@ -1944,6 +2133,12 @@ footer p {
   .market-clock {
     display: none;
   }
+
+  .account-menu > img,
+  .account-menu > span { width: 28px; height: 28px; }
+  .account-menu { height: 38px; }
+  .account-menu a { font-size: 0; }
+  .account-menu a::after { content: "나가기"; font-size: 9px; }
 
   .global-stock-search input {
     width: min(52vw, 230px);

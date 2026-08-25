@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSession, unauthorized } from "@/lib/auth";
 import {
   screenTicker,
   fetchUsdKrwRate,
@@ -19,6 +20,7 @@ type ScreenRequest = {
 };
 
 export async function POST(request: Request) {
+  if (!(await getSession(request))) return unauthorized();
   try {
     const body = (await request.json()) as ScreenRequest;
     const tickers = Array.isArray(body.tickers) ? body.tickers.slice(0, 30) : [];
