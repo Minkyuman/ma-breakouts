@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("Phase 4 rate limits mutations and audits administrator changes", async () => {
-  const [operations, admin, adminAssignment, localPreview, orderRoute, rankingRoute, page, styles] = await Promise.all([
+  const [operations, admin, adminAssignment, localPreview, orderRoute, rankingRoute, page, styles, game, vercelConfig] = await Promise.all([
     readFile(new URL("../lib/game-operations.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/game-admin.ts", import.meta.url), "utf8"),
     readFile(new URL("../scripts/assign-development-admin.ts", import.meta.url), "utf8"),
@@ -12,6 +12,8 @@ test("Phase 4 rate limits mutations and audits administrator changes", async () 
     readFile(new URL("../app/api/game/leaderboard/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../lib/game.ts", import.meta.url), "utf8"),
+    readFile(new URL("../vercel.json", import.meta.url), "utf8"),
   ]);
 
   assert.match(operations, /SHA-256/);
@@ -33,4 +35,8 @@ test("Phase 4 rate limits mutations and audits administrator changes", async () 
   assert.match(page, /DB admin 역할 전용/);
   assert.match(page, /aria-selected=\{false\}/);
   assert.match(styles, /league-admin-form/);
+  assert.match(game, /isAdmin: boolean/);
+  assert.match(page, /if \(payload\.game\.isAdmin\) tasks\.push\(loadAdmin/);
+  assert.match(page, /Promise\.allSettled\(tasks\)/);
+  assert.match(vercelConfig, /"regions": \["icn1"\]/);
 });

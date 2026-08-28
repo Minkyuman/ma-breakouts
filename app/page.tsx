@@ -569,21 +569,23 @@ export default function Home() {
 
 function FavoriteDialog({
   currentTicker,
+  initialLists,
   onClose,
   onOpenChart,
   onListsChange,
 }: {
   currentTicker: Ticker | null;
+  initialLists: FavoriteList[] | null;
   onClose: () => void;
   onOpenChart: (ticker: Ticker) => void;
   onListsChange: (lists: FavoriteList[]) => void;
 }) {
-  const [lists, setLists] = useState<FavoriteList[]>([]);
+  const [lists, setLists] = useState<FavoriteList[]>(initialLists ?? []);
   const [selectedListId, setSelectedListId] = useState("");
   const [newListName, setNewListName] = useState("");
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialLists === null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -602,6 +604,14 @@ function FavoriteDialog({
     document.addEventListener("keydown", closeOnEscape);
     document.body.style.overflow = "hidden";
     const focusFrame = requestAnimationFrame(() => closeButtonRef.current?.focus());
+    if (initialLists !== null) {
+      return () => {
+        controller.abort();
+        cancelAnimationFrame(focusFrame);
+        document.removeEventListener("keydown", closeOnEscape);
+        document.body.style.overflow = "";
+      };
+    }
     fetch("/api/favorites", { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json() as { lists?: FavoriteList[]; error?: string };
@@ -618,7 +628,7 @@ function FavoriteDialog({
       document.removeEventListener("keydown", closeOnEscape);
       document.body.style.overflow = "";
     };
-  }, [applyLists, onClose]);
+  }, [applyLists, initialLists, onClose]);
 
   async function mutate(input: Record<string, unknown>) {
     setSaving(true);
@@ -833,8 +843,15 @@ function LeagueDialog({
         setGame(payload.game);
         setNickname(payload.game.profile?.nickname ?? "");
         setActivityFeedVisible(payload.game.profile?.activityFeedVisible ?? true);
+        setLoading(false);
         if (payload.game.status === "ready") {
-          return Promise.all([loadPortfolio(controller.signal), loadLeague(false, controller.signal), loadAdmin(controller.signal)]);
+          const tasks = [loadPortfolio(controller.signal), loadLeague(false, controller.signal)];
+          if (payload.game.isAdmin) tasks.push(loadAdmin(controller.signal));
+          void Promise.allSettled(tasks).then((outcomes) => {
+            if (controller.signal.aborted) return;
+            const rejected = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+            if (rejected) setError(rejected.reason instanceof Error ? rejected.reason.message : "리그 상세 정보를 불러오지 못했습니다.");
+          });
         }
       })
       .catch((fetchError) => {
@@ -869,7 +886,11 @@ function LeagueDialog({
         throw new Error(payload.error || "리그 참가 정보를 저장하지 못했습니다.");
       }
       setGame(payload.game);
-      if (payload.game.status === "ready") await Promise.all([loadPortfolio(), loadLeague(), loadAdmin()]);
+      if (payload.game.status === "ready") {
+        const tasks = [loadPortfolio(), loadLeague()];
+        if (payload.game.isAdmin) tasks.push(loadAdmin());
+        await Promise.all(tasks);
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "리그 참가에 실패했습니다.");
     } finally {
@@ -1228,7 +1249,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [leagueOpen, setLeagueOpen] = useState(false);
   const [leagueTicker, setLeagueTicker] = useState<Ticker | null>(null);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
-  const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
+  const [favoriteLists, setFavoriteLists] = useState<FavoriteList[] | null>(null);
   const closeLeague = useCallback(() => setLeagueOpen(false), []);
   const closeFavorites = useCallback(() => setFavoritesOpen(false), []);
   const chartPanelRef = useRef<HTMLElement>(null);
@@ -1244,7 +1265,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       })
       .then((payload) => setFavoriteLists(payload.lists ?? []))
       .catch((loadError) => {
-        if (loadError instanceof Error && loadError.name !== "AbortError") setFavoriteLists([]);
+        if (loadError instanceof Error && loadError.name !== "AbortError") setFavoriteLists(null);
       });
     return () => controller.abort();
   }, []);
@@ -1319,7 +1340,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     price: 0,
   };
   const selected = directTicker ?? selectedCandidate ?? marketTicker;
-  const selectedIsFavorite = !isMarketOverview && favoriteLists.some((list) =>
+  const selectedIsFavorite = !isMarketOverview && (favoriteLists ?? []).some((list) =>
     list.items.some((item) => item.symbol === selected.code && item.market === selected.market),
   );
   const selectedSignal = directTicker || isMarketOverview ? undefined : selectedCandidate;
@@ -2093,7 +2114,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       )}
 
       {leagueOpen && <LeagueDialog onClose={closeLeague} onOpenChart={openSavedSecurityChart} ticker={leagueTicker} />}
-      {favoritesOpen && <FavoriteDialog currentTicker={isMarketOverview ? null : { ...selected, price: detailCurrentClose, exchangeRate: appliedExchangeRate ?? undefined }} onClose={closeFavorites} onOpenChart={openSavedSecurityChart} onListsChange={setFavoriteLists} />}
+      {favoritesOpen && <FavoriteDialog currentTicker={isMarketOverview ? null : { ...selected, price: detailCurrentClose, exchangeRate: appliedExchangeRate ?? undefined }} initialLists={favoriteLists} onClose={closeFavorites} onOpenChart={openSavedSecurityChart} onListsChange={setFavoriteLists} />}
 
       <footer>
         <p>현재 봉은 진행 중이므로 신호와 거래량 비교는 마감 전까지 달라질 수 있습니다.</p>

@@ -104,20 +104,19 @@ async function ownedList(userId: string, listId: unknown) {
   return list;
 }
 
-export async function getFavoriteLists(authUser: AuthUser): Promise<FavoriteList[]> {
-  const account = await ensureAccount(authUser);
+async function getFavoriteListsForAccount(userId: string): Promise<FavoriteList[]> {
   const database = getDb();
   let lists = await database
     .select()
     .from(favoriteLists)
-    .where(eq(favoriteLists.userId, account.id))
+    .where(eq(favoriteLists.userId, userId))
     .orderBy(asc(favoriteLists.sortOrder), asc(favoriteLists.createdAt));
   if (!lists.length) {
-    await ensureDefaultList(account.id);
+    await ensureDefaultList(userId);
     lists = await database
       .select()
       .from(favoriteLists)
-      .where(eq(favoriteLists.userId, account.id))
+      .where(eq(favoriteLists.userId, userId))
       .orderBy(asc(favoriteLists.sortOrder), asc(favoriteLists.createdAt));
   }
   const items = lists.length
@@ -140,6 +139,11 @@ export async function getFavoriteLists(authUser: AuthUser): Promise<FavoriteList
       createdAt: item.createdAt.toISOString(),
     })),
   }));
+}
+
+export async function getFavoriteLists(authUser: AuthUser): Promise<FavoriteList[]> {
+  const account = await ensureAccount(authUser);
+  return getFavoriteListsForAccount(account.id);
 }
 
 export async function mutateFavorites(authUser: AuthUser, input: Record<string, unknown>) {
@@ -174,5 +178,5 @@ export async function mutateFavorites(authUser: AuthUser, input: Record<string, 
     throw new FavoriteError("INVALID_INPUT", "즐겨찾기 요청을 확인해 주세요.");
   }
 
-  return getFavoriteLists(authUser);
+  return getFavoriteListsForAccount(account.id);
 }

@@ -15,6 +15,7 @@ const SERIALIZABLE_RETRY_LIMIT = 3;
 
 export type GameOverview = {
   status: "unavailable" | "onboarding" | "ready";
+  isAdmin: boolean;
   season: {
     id: string;
     name: string;
@@ -89,13 +90,15 @@ function publicOverview(
   season: typeof seasons.$inferSelect | undefined,
   profile: typeof gameProfiles.$inferSelect | undefined,
   portfolio: typeof portfolios.$inferSelect | undefined,
+  isAdmin = false,
 ): GameOverview {
   if (!season) {
-    return { status: "unavailable", season: null, profile: null, portfolio: null };
+    return { status: "unavailable", isAdmin, season: null, profile: null, portfolio: null };
   }
 
   return {
     status: profile && portfolio ? "ready" : "onboarding",
+    isAdmin,
     season: {
       id: season.id,
       name: season.name,
@@ -145,7 +148,7 @@ export async function getGameOverview(authUser: AuthUser): Promise<GameOverview>
   if (!season) return publicOverview(undefined, undefined, undefined);
 
   const [account] = await database
-    .select({ id: users.id })
+    .select({ id: users.id, role: users.role })
     .from(users)
     .where(eq(users.googleSub, authUser.sub))
     .limit(1);
@@ -169,7 +172,7 @@ export async function getGameOverview(authUser: AuthUser): Promise<GameOverview>
       .limit(1),
   ]);
 
-  return publicOverview(season, profile, portfolio);
+  return publicOverview(season, profile, portfolio, account.role === "admin");
 }
 
 export async function enrollInActiveSeason(
@@ -292,7 +295,7 @@ export async function enrollInActiveSeason(
               target: [cashLedger.portfolioId, cashLedger.idempotencyKey],
             });
 
-          return publicOverview(season, profile, portfolio);
+          return publicOverview(season, profile, portfolio, account.role === "admin");
         },
         { isolationLevel: "serializable", accessMode: "read write" },
       );
