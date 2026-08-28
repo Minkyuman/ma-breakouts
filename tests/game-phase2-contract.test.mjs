@@ -31,6 +31,10 @@ test("Phase 2 trusts server quotes and settles atomically with exact decimals", 
   assert.match(market, /한국 주식·ETF와 미국 보통주/);
   assert.match(page, /supportsPaperTrading\(ticker\)/);
   assert.match(page, /사이버 머니 · 실제 주문 아님/);
+  assert.match(page, /QUICK_BUY_ALLOCATIONS/);
+  assert.match(page, /보유 현금 기준 빠른 매수/);
+  assert.match(page, /Math\.floor\(\(availableCashKrw \* allocation \/ 100\) \/ estimatedUnitKrw\)/);
+  assert.match(page, /체결 시 서버가 최신 시세와 주문 가능 현금을 다시 확인합니다/);
   assert.match(page, /화면의 예상 금액과 실제 모의 체결 금액은 다를 수 있습니다/);
   assert.match(page, /시세 시각/);
 });

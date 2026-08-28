@@ -77,6 +77,7 @@ Leaderboard rows show rank, nickname, total return, daily return, equity, cash r
 - season countdown and rank movement;
 - no celebration language for financial loss and no prompts encouraging overtrading;
 - persistent `사이버 머니 · 실제 주문 아님` label on order surfaces.
+- 매수 티켓은 화면 시세·환율을 기준으로 보유 현금의 10%·25%·50%·최대에 해당하는 정수 수량을 빠르게 입력할 수 있다. 이는 입력 편의 기능일 뿐이며, 서버가 최종 시세·환율·현금을 다시 검증한다.
 
 ## 5. Data model
 

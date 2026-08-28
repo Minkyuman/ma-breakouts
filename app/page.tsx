@@ -49,6 +49,15 @@ type AdminGameOverview = {
   }>;
 };
 
+const QUICK_BUY_ALLOCATIONS = [
+  { label: "10%", value: 10 },
+  { label: "25%", value: 25 },
+  { label: "50%", value: 50 },
+  { label: "최대", value: 100 },
+] as const;
+
+type QuickBuyAllocation = (typeof QUICK_BUY_ALLOCATIONS)[number]["value"];
+
 const MARKET_WATCHES: MarketWatch[] = [
   { id: "kospi", name: "코스피", shortName: "KOSPI", unit: "pt" },
   { id: "kosdaq", name: "코스닥", shortName: "KOSDAQ", unit: "pt" },
@@ -752,6 +761,7 @@ function LeagueDialog({
   const [activityFeedVisible, setActivityFeedVisible] = useState(true);
   const [tradeSide, setTradeSide] = useState<TradeSide>("buy");
   const [tradeQuantity, setTradeQuantity] = useState(1);
+  const [quickBuyAllocation, setQuickBuyAllocation] = useState<QuickBuyAllocation | null>(null);
   const [tradeNote, setTradeNote] = useState("");
   const [tradeConfirming, setTradeConfirming] = useState(false);
   const [receipt, setReceipt] = useState<TradeReceipt | null>(null);
@@ -931,6 +941,8 @@ function LeagueDialog({
       }
       setReceipt(payload.receipt);
       setTradeNote("");
+      setTradeQuantity(1);
+      setQuickBuyAllocation(null);
       setTradeConfirming(false);
       await loadPortfolio();
       try {
@@ -998,9 +1010,24 @@ function LeagueDialog({
     }
   }
 
-  const estimatedTradeKrw = ticker
-    ? ticker.price * (ticker.currency === "USD" ? ticker.exchangeRate ?? 0 : 1) * tradeQuantity
+  const availableCashKrw = Math.max(0, Number(dashboard?.portfolio.cashKrw ?? game?.portfolio?.cashKrw ?? 0));
+  const estimatedUnitKrw = ticker
+    ? ticker.price * (ticker.currency === "USD" ? ticker.exchangeRate ?? 0 : 1)
     : 0;
+  const estimatedTradeKrw = estimatedUnitKrw * tradeQuantity;
+
+  function quantityForAllocation(allocation: QuickBuyAllocation) {
+    if (!Number.isFinite(availableCashKrw) || !Number.isFinite(estimatedUnitKrw) || estimatedUnitKrw <= 0) return 0;
+    return Math.min(1_000_000, Math.floor((availableCashKrw * allocation / 100) / estimatedUnitKrw));
+  }
+
+  function applyQuickBuyAllocation(allocation: QuickBuyAllocation) {
+    const quantity = quantityForAllocation(allocation);
+    if (quantity < 1) return;
+    setTradeQuantity(quantity);
+    setQuickBuyAllocation(allocation);
+    setTradeConfirming(false);
+  }
 
   return (
     <div className="league-dialog-backdrop" role="presentation">
@@ -1057,12 +1084,24 @@ function LeagueDialog({
                 </div>
                 <div className="league-trade-controls">
                   <div className="league-side-buttons" aria-label="모의 주문 방향">
-                    <button type="button" className={tradeSide === "buy" ? "active buy" : ""} onClick={() => { setTradeSide("buy"); setTradeConfirming(false); }}>매수</button>
-                    <button type="button" className={tradeSide === "sell" ? "active sell" : ""} onClick={() => { setTradeSide("sell"); setTradeConfirming(false); }}>매도</button>
+                    <button type="button" className={tradeSide === "buy" ? "active buy" : ""} onClick={() => { setTradeSide("buy"); setQuickBuyAllocation(null); setTradeConfirming(false); }}>매수</button>
+                    <button type="button" className={tradeSide === "sell" ? "active sell" : ""} onClick={() => { setTradeSide("sell"); setQuickBuyAllocation(null); setTradeConfirming(false); }}>매도</button>
                   </div>
-                  <label><span>수량</span><input type="number" min="1" max="1000000" step="1" value={tradeQuantity} onChange={(event) => { setTradeQuantity(Math.max(1, Math.floor(Number(event.target.value) || 1))); setTradeConfirming(false); }} /></label>
+                  <label><span>수량</span><input type="number" min="1" max="1000000" step="1" value={tradeQuantity} onChange={(event) => { setTradeQuantity(Math.max(1, Math.min(1_000_000, Math.floor(Number(event.target.value) || 1)))); setQuickBuyAllocation(null); setTradeConfirming(false); }} /></label>
                   <div className="league-trade-estimate"><span>화면가 기준 예상</span><strong>{estimatedTradeKrw > 0 ? `${formatPrice(estimatedTradeKrw)}원` : "서버에서 계산"}</strong></div>
                 </div>
+                {tradeSide === "buy" && (
+                  <div className="league-buy-allocation" aria-label="보유 현금 기준 빠른 매수">
+                    <div><span>보유 현금으로 빠른 매수</span><small>{formatKrwAmount(String(availableCashKrw))} 기준</small></div>
+                    <div>
+                      {QUICK_BUY_ALLOCATIONS.map(({ label, value }) => {
+                        const quantity = quantityForAllocation(value);
+                        return <button key={value} type="button" className={quickBuyAllocation === value ? "active" : ""} aria-pressed={quickBuyAllocation === value} disabled={quantity < 1} title={quantity > 0 ? `${quantity.toLocaleString("ko-KR")}주 자동 입력` : "해당 금액으로 1주 미만"} onClick={() => applyQuickBuyAllocation(value)}>{label}</button>;
+                      })}
+                    </div>
+                    <small>화면 시세로 수량을 계산하며, 체결 시 서버가 최신 시세와 주문 가능 현금을 다시 확인합니다.</small>
+                  </div>
+                )}
                 <div className="league-trade-note">
                   <div className="league-trade-note-head"><label htmlFor="league-trade-note">매매 메모 <small>선택</small></label><span>{Array.from(tradeNote).length}/200</span></div>
                   <div className="league-trade-note-tags" aria-label="매매 메모 빠른 태그">
