@@ -99,7 +99,7 @@ Actors are stored as a SHA-256 application-scoped key, not email or raw Google `
 
 ## 6. Known release blockers
 
-- Production Supabase project, backup/restore evidence, and first admin assignment are not approved or completed.
+- Production Supabase and initial migrations are complete. A backup/restore drill after real participant data exists and the first Production admin assignment remain pending.
 - Correction workflow and season-close UI are not implemented.
 - Automated browser testing could not run without a connected browser; authenticated mobile tap/keyboard review remains a manual gate.
 - Exchange-grade real-time fairness is not available. A prize-bearing season requires batch settlement or a licensed quote policy decision.

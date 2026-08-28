@@ -7,7 +7,7 @@
 - Target region: Seoul, `ap-northeast-2`
 - Target plan: Free
 - Development project: `line-breaker-dev` (`mligljkrwrcdslfbvqsz`), `ACTIVE_HEALTHY`
-- Production project: not created or connected
+- Production project: `line-breaker-prod` (`upkrskqfbnxjggnxhpio`), Seoul, `ACTIVE_HEALTHY`
 - Authentication: keep existing Google OAuth; Supabase is DB/Realtime only
 - Data API posture: all game tables have RLS enabled with no public policies; access is server-only
 
@@ -64,6 +64,15 @@ Before applying to Production:
 - `drizzle/0004_shocking_silver_surfer.sql`: Phase 4 database rate-limit buckets and immutable administrator audit events with RLS.
 
 Remote verification on 2026-08-28 confirmed all thirteen tables exist and have `rowsecurity = true`.
+
+## Production bootstrap
+
+- 2026-08-28: created the separate Seoul Production project `line-breaker-prod` on the Free plan.
+- Vercel Production stores the Supavisor transaction-pooler `DATABASE_URL` and `DATABASE_SSL=require` as server-only secrets.
+- Applied migrations `0000` through `0005` to the fresh Production database and verified all 15 public tables have RLS enabled.
+- Opened `LINE BREAKER 프리시즌 2026` with KRW 100,000,000 starting capital through 2026-12-31.
+- The Production database was empty before the additive initial migration. The committed migrations are the schema recovery source; a provider backup/restore drill remains required before a prize-bearing or public season.
+- The first Production administrator assignment remains pending until `minkyuman@gmail.com` completes normal league enrollment so its durable Google `sub` exists in Production.
 
 ## Development preseason and Phase 1 verification
 

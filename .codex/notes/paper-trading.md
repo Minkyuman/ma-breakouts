@@ -1,6 +1,6 @@
 # LINE BREAKER League — product and engineering plan
 
-Status: Phase 4 development hardening complete; Development administrator bootstrap ready and awaiting first league entry; Production release gates pending  
+Status: Phase 4 private preseason deployed; separate Production database migrated; first Production administrator enrollment/assignment pending
 Last updated: 2026-08-28  
 Working name: **LINE BREAKER League / 선 넘는 리그**
 
@@ -260,6 +260,7 @@ Exit: no P0/P1 defects, production backup verified, season reset tested, and sim
 - A guarded, idempotent Development-only administrator bootstrap script now resolves an existing account by email for lookup only, assigns the role to its durable Google-sub-backed user row, and writes `user.admin_assigned` in the same transaction. The target email and Google `sub` are not persisted in audit metadata.
 - The first assignment attempt for the designated owner found no Development league user row and rolled back without changes. The owner must sign in and open the league once so the normal Google-sub-based enrollment creates the account; then the guarded command can be rerun.
 - Development preseason diagnosis found that successful trades refreshed only the personal portfolio in the client, leaving the in-memory leaderboard snapshot and activity tape stale. The trade flow now performs a read-only league/activity refresh after each fill without misreporting the completed trade as failed. Ranking and activity tab entry are read-only; the expensive common valuation runs only from the explicit `현재 시세로 갱신` button. A 429 response disables that button and displays the server-provided remaining wait time.
+- 2026-08-28: created a separate Seoul Production Supabase project, applied migrations `0000` through `0005`, verified RLS on all 15 public tables, configured the Vercel Production pooler connection, and opened the private preseason. Production administrator assignment still requires the owner to enroll once through the deployed service.
 
 ## 11. Out of scope for the first release
 
