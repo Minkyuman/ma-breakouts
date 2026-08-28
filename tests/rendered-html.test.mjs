@@ -157,6 +157,9 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(page, /runFullScan/);
   assert.match(page, /MARKET PULSE/);
   assert.match(page, /MARKET_WATCHES/);
+  assert.match(page, /const openMarketOverview = useCallback/);
+  assert.match(page, /setDirectTicker\(null\)/);
+  assert.match(page, /onClick=\{\(\) => openMarketOverview\(watch\.id\)\}/);
   assert.match(page, /\/api\/market-chart/);
   assert.doesNotMatch(page, /useState<Candidate\[\]>\(INITIAL_RESULTS\)/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);

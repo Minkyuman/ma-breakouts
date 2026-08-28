@@ -1304,6 +1304,15 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     });
   }, []);
 
+  const openMarketOverview = useCallback((watchId: string) => {
+    setMarketWatchId(watchId);
+    setDirectTicker(null);
+    setSelectedKey("");
+    setStockQuery("");
+    setStockMatches([]);
+    setStockSearching(false);
+  }, []);
+
   useEffect(() => {
     if (!logoOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -1935,7 +1944,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                   key={watch.id}
                   type="button"
                   className={watch.id === activeMarketWatch.id ? "active" : ""}
-                  onClick={() => setMarketWatchId(watch.id)}
+                  onClick={() => openMarketOverview(watch.id)}
                 >
                   <span>{watch.name}</span>
                   <small>{watch.shortName}</small>
