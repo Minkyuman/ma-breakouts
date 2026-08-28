@@ -813,6 +813,17 @@ select:focus-visible {
 
 .league-trade-estimate strong { font: 700 12px var(--font-geist-mono), monospace; }
 
+.league-trade-note { display: grid; gap: 7px; }
+.league-trade-note-head { display: flex; align-items: center; justify-content: space-between; }
+.league-trade-note-head label { color: var(--ink); font-size: 10px; font-weight: 750; }
+.league-trade-note-head label small { margin-left: 4px; color: var(--muted); font-size: 8px; font-weight: 600; }
+.league-trade-note-head > span { color: var(--muted); font: 600 8px var(--font-geist-mono), monospace; }
+.league-trade-note-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.league-trade-note-tags button { min-height: 26px; padding: 0 8px; border: 1px solid rgba(189, 135, 41, 0.25); border-radius: 999px; background: #fff; color: #8b6624; font-size: 8px; font-weight: 700; }
+.league-trade-note textarea { width: 100%; resize: vertical; min-height: 66px; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; color: var(--ink); font: inherit; font-size: 10px; font-weight: 500; line-height: 1.55; }
+.league-trade-note textarea:focus { outline: 2px solid rgba(27, 70, 59, 0.16); border-color: var(--green); }
+.league-trade-note > small { color: var(--muted); font-size: 8px; line-height: 1.5; }
+
 .league-trade-review {
   min-height: 42px;
   border: 0;
@@ -835,6 +846,7 @@ select:focus-visible {
 .league-trade-confirmation p,
 .league-trade-confirmation small { margin: 0; }
 .league-trade-confirmation p { font-size: 12px; }
+.league-trade-confirmation blockquote { margin: 0; padding: 8px 10px; border-left: 2px solid var(--gold); border-radius: 0 8px 8px 0; background: rgba(255, 255, 255, 0.72); color: var(--ink); font-size: 9px; line-height: 1.5; white-space: pre-wrap; }
 .league-trade-confirmation small { color: var(--muted); font-size: 9px; line-height: 1.55; }
 .league-trade-confirmation > div { display: flex; justify-content: flex-end; gap: 7px; }
 .league-trade-confirmation button { min-height: 34px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; color: var(--muted); font-size: 9px; font-weight: 700; }
@@ -853,6 +865,7 @@ select:focus-visible {
 .league-receipt > div:first-child > span { color: #29845a; font-size: 8px; font-weight: 800; }
 .league-receipt > div:first-child > strong { font-size: 12px; }
 .league-receipt dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.league-trade-note-copy { margin: 0; padding: 9px 10px; border-radius: 9px; background: rgba(255, 255, 255, 0.7); color: var(--ink); font-size: 9px; line-height: 1.55; white-space: pre-wrap; }
 .league-receipt dl > div { display: flex; justify-content: space-between; gap: 8px; padding: 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.74); }
 .league-receipt dt { color: var(--muted); font-size: 8px; }
 .league-receipt dd { margin: 0; font: 650 9px var(--font-geist-mono), monospace; text-align: right; }
@@ -906,6 +919,9 @@ select:focus-visible {
 .league-order-history > button > div { flex: 1; display: grid; gap: 3px; }
 .league-order-history > button strong { font-size: 10px; }
 .league-order-history > button small { color: var(--muted); font-size: 8px; }
+.league-order-history q,
+.league-activity-list q,
+.league-player-trades q { overflow: hidden; color: #765d31; font-size: 8px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .league-order-history > button em { font: 650 9px var(--font-geist-mono), monospace; font-style: normal; }
 .league-empty-copy,
 .league-inline-loading { margin: 0; padding: 15px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); font-size: 9px; text-align: center; }
@@ -1006,12 +1022,22 @@ select:focus-visible {
 .league-player-detail-head button { width: 27px; height: 27px; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--muted); }
 .league-player-detail-metrics { display: flex; gap: 14px; color: var(--muted); font-size: 9px; }
 .league-player-detail-metrics b { margin-left: 4px; color: var(--ink); font: 700 9px var(--font-geist-mono), monospace; }
+.league-player-trades { display: grid; overflow: hidden; border: 1px solid rgba(27, 70, 59, 0.16); border-radius: 11px; background: rgba(255, 255, 255, 0.62); }
+.league-player-trades > strong { padding: 9px 11px 6px; color: var(--muted); font-size: 8px; }
+.league-player-trades > button { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 8px 11px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; }
+.league-player-trades > button > span { width: 32px; flex: 0 0 auto; padding: 4px 0; border-radius: 7px; font-size: 8px; font-weight: 750; text-align: center; }
+.league-player-trades > button > span.buy { background: rgba(217, 88, 66, 0.1); color: var(--red); }
+.league-player-trades > button > span.sell { background: rgba(52, 123, 150, 0.1); color: var(--blue); }
+.league-player-trades > button > div { min-width: 0; display: grid; gap: 2px; }
+.league-player-trades b { font-size: 9px; }
+.league-player-trades small { color: var(--muted); font-size: 8px; }
 
 .league-activity-list > article > span { width: 34px; padding: 5px 0; border-radius: 7px; font-size: 8px; font-weight: 750; text-align: center; }
 .league-activity-list > article > span.buy { background: rgba(217, 88, 66, 0.1); color: var(--red); }
 .league-activity-list > article > span.sell { background: rgba(52, 123, 150, 0.1); color: var(--blue); }
 .league-activity-list > article > div { min-width: 0; flex: 1; display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; gap: 3px 6px; }
 .league-activity-list > article > div > small { grid-column: 1 / -1; }
+.league-activity-list > article > div > q { grid-column: 1 / -1; }
 .league-activity-list strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .league-activity-list small { color: var(--muted); font-size: 8px; }
 .league-activity-list em { font: 650 9px var(--font-geist-mono), monospace; font-style: normal; }

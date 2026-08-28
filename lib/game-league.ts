@@ -66,6 +66,7 @@ export type LeagueActivity = {
   securityName: string;
   market: string;
   quantity: number;
+  tradeNote: string | null;
   grossKrw: string;
   executedAt: string;
 };
@@ -420,6 +421,7 @@ async function leagueActivity(seasonId: string, limit = 30): Promise<LeagueActiv
       securityName: orders.securityName,
       market: orders.market,
       quantity: orders.quantity,
+      tradeNote: orders.tradeNote,
       grossKrw: executions.grossKrw,
       executedAt: executions.createdAt,
     })

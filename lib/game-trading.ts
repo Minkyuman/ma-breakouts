@@ -36,6 +36,7 @@ export type TradeReceipt = {
   market: string;
   side: TradeSide;
   quantity: number;
+  tradeNote: string | null;
   status: "filled";
   nativePrice: string;
   nativeCurrency: string;
@@ -108,12 +109,34 @@ function databaseErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
+export function normalizeTradeNote(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new GameTradeError("INVALID_ORDER", "매매 메모는 텍스트로 입력해 주세요.");
+  }
+  const note = value
+    .normalize("NFKC")
+    .replace(/\r\n?/gu, "\n")
+    .replace(/[\t\f\v ]+/gu, " ")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+  if (!note) return null;
+  if (Array.from(note).length > 200) {
+    throw new GameTradeError("INVALID_ORDER", "매매 메모는 200자 이내로 입력해 주세요.");
+  }
+  if (/[<>]/u.test(note) || /(?:https?:\/\/|www\.)/iu.test(note) || /\b[^\s@]+@[^\s@]+\.[^\s@]+\b/u.test(note)) {
+    throw new GameTradeError("INVALID_ORDER", "매매 메모에는 HTML, 링크 또는 이메일을 넣을 수 없습니다.");
+  }
+  return note;
+}
+
 function normalizeIntent(input: Record<string, unknown>) {
   const symbol = typeof input.symbol === "string" ? input.symbol.trim().toUpperCase() : "";
   const market = typeof input.market === "string" ? input.market.trim().toUpperCase() : "";
   const side: TradeSide | null = input.side === "buy" || input.side === "sell" ? input.side : null;
   const quantity = Number(input.quantity);
   const clientOrderId = typeof input.clientOrderId === "string" ? input.clientOrderId.trim() : "";
+  const tradeNote = normalizeTradeNote(input.tradeNote);
   const validMarket = ["KOSPI", "KOSDAQ", "NASDAQ", "NYSE", "AMEX"].includes(market);
   const validSymbol = /^\d{6}$/u.test(symbol) || /^[A-Z][A-Z0-9.-]{0,15}$/u.test(symbol);
 
@@ -132,7 +155,7 @@ function normalizeIntent(input: Record<string, unknown>) {
     );
   }
 
-  return { symbol, market: market as Market, side, quantity, clientOrderId };
+  return { symbol, market: market as Market, side, quantity, clientOrderId, tradeNote };
 }
 
 async function activePortfolio(authUser: AuthUser) {
@@ -189,6 +212,7 @@ async function receiptByOrderId(orderId: string, replayed: boolean): Promise<Tra
     market: row.order.market,
     side: row.order.side,
     quantity: row.order.quantity,
+    tradeNote: row.order.tradeNote,
     status: row.order.status,
     nativePrice: row.execution.nativePrice,
     nativeCurrency: row.execution.nativeCurrency,
@@ -215,7 +239,8 @@ function sameIntent(
     existing.symbol === intent.symbol &&
     existing.market === intent.market &&
     existing.side === intent.side &&
-    existing.quantity === intent.quantity
+    existing.quantity === intent.quantity &&
+    existing.tradeNote === intent.tradeNote
   );
 }
 
@@ -392,6 +417,7 @@ export async function executeTrade(
               market: intent.market,
               side: intent.side,
               quantity: intent.quantity,
+              tradeNote: intent.tradeNote,
               clientOrderId: intent.clientOrderId,
               requestedAt: now,
             })

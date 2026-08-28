@@ -263,6 +263,14 @@ Exit: no P0/P1 defects, production backup verified, season reset tested, and sim
 - 2026-08-28: created a separate Seoul Production Supabase project, applied migrations `0000` through `0005`, verified RLS on all 15 public tables, configured the Vercel Production pooler connection, and opened the private preseason. Production administrator assignment still requires the owner to enroll once through the deployed service.
 - Production latency review found the Vercel function in `iad1` while Supabase runs in Seoul. Runtime placement is now pinned to `icn1`; the league shell renders after the profile response instead of waiting for all detail calls, and the admin overview is requested only for a confirmed database admin.
 
+## 17. Immutable trade-note implementation record
+
+- 2026-08-28: added an optional plain-text trade note of up to 200 Unicode characters to simulated buy and sell orders. Empty input is stored as null; HTML delimiters, links, and email addresses are rejected server-side.
+- The normalized note is part of the immutable idempotent order intent. Reusing a client order ID with a different note is rejected, while an exact replay returns the original receipt and note.
+- Personal receipts and recent fills always show the owner’s note. League activity and participant recent trades expose it only through the existing `activity_feed_visible` gate; private identity fields remain excluded.
+- The order UI includes quick thesis tags, a character counter, confirmation preview, and an explicit notice that notes cannot be edited after execution. Public activity carries the disclaimer that notes are personal opinions, not investment recommendations.
+- `drizzle/0006_milky_meteorite.sql` adds only the nullable `orders.trade_note` column and was applied and verified on Development and Production with `orders` RLS still enabled. Development integration verification covers note persistence, exact replay, and different-note idempotency conflict.
+
 ## 11. Out of scope for the first release
 
 - real money, deposits, brokerage linkage, prizes, margin, shorting, options, crypto;

@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "trade_note" varchar(200);

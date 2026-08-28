@@ -746,6 +746,7 @@ function LeagueDialog({
   const [activityFeedVisible, setActivityFeedVisible] = useState(true);
   const [tradeSide, setTradeSide] = useState<TradeSide>("buy");
   const [tradeQuantity, setTradeQuantity] = useState(1);
+  const [tradeNote, setTradeNote] = useState("");
   const [tradeConfirming, setTradeConfirming] = useState(false);
   const [receipt, setReceipt] = useState<TradeReceipt | null>(null);
   const [adminDraft, setAdminDraft] = useState({ name: "", slug: "", startsAt: "", endsAt: "", initialCashKrw: "100000000", status: "draft" });
@@ -914,6 +915,7 @@ function LeagueDialog({
           market: ticker.market,
           side: tradeSide,
           quantity: tradeQuantity,
+          tradeNote,
           clientOrderId: crypto.randomUUID(),
         }),
       });
@@ -922,6 +924,7 @@ function LeagueDialog({
         throw new Error(payload.error || "모의 주문을 체결하지 못했습니다.");
       }
       setReceipt(payload.receipt);
+      setTradeNote("");
       setTradeConfirming(false);
       await loadPortfolio();
       try {
@@ -1054,9 +1057,18 @@ function LeagueDialog({
                   <label><span>수량</span><input type="number" min="1" max="1000000" step="1" value={tradeQuantity} onChange={(event) => { setTradeQuantity(Math.max(1, Math.floor(Number(event.target.value) || 1))); setTradeConfirming(false); }} /></label>
                   <div className="league-trade-estimate"><span>화면가 기준 예상</span><strong>{estimatedTradeKrw > 0 ? `${formatPrice(estimatedTradeKrw)}원` : "서버에서 계산"}</strong></div>
                 </div>
+                <div className="league-trade-note">
+                  <div className="league-trade-note-head"><label htmlFor="league-trade-note">매매 메모 <small>선택</small></label><span>{Array.from(tradeNote).length}/200</span></div>
+                  <div className="league-trade-note-tags" aria-label="매매 메모 빠른 태그">
+                    {["#실적", "#돌파", "#저평가", "#테마", "#장기투자"].map((tag) => <button key={tag} type="button" onClick={() => { setTradeNote((current) => current.includes(tag) ? current : Array.from(`${tag}${current ? ` ${current}` : ""}`).slice(0, 200).join("")); setTradeConfirming(false); }}>{tag}</button>)}
+                  </div>
+                  <textarea id="league-trade-note" maxLength={200} rows={3} placeholder="왜 이 종목을 선택했는지 간단히 남겨보세요." value={tradeNote} onChange={(event) => { setTradeNote(event.target.value); setTradeConfirming(false); }} />
+                  <small>체결 후 수정할 수 없습니다. 공개 활동은 내 활동 공개 설정을 따릅니다.</small>
+                </div>
                 {tradeConfirming ? (
                   <div className="league-trade-confirmation">
                     <p><strong>{ticker.name}</strong> {tradeSide === "buy" ? "매수" : "매도"} {tradeQuantity.toLocaleString("ko-KR")}주</p>
+                    {tradeNote.trim() && <blockquote>{tradeNote.trim()}</blockquote>}
                     <small>확정 시 서버가 최신 지연 시세와 환율을 다시 조회합니다. 화면의 예상 금액과 실제 모의 체결 금액은 다를 수 있습니다.</small>
                     <div><button type="button" onClick={() => setTradeConfirming(false)}>취소</button><button type="submit" disabled={tradeSubmitting}>{tradeSubmitting ? "체결 중…" : "서버 시세로 체결 확정"}</button></div>
                   </div>
@@ -1075,6 +1087,7 @@ function LeagueDialog({
                   <div><dt>시세 시각</dt><dd>{new Date(receipt.quoteAt).toLocaleString("ko-KR")}</dd></div>
                   <div><dt>환율</dt><dd>{receipt.nativeCurrency === "USD" ? `${Number(receipt.fxRate).toFixed(2)} · ${new Date(receipt.fxAt).toLocaleString("ko-KR")}` : "KRW 1:1"}</dd></div>
                 </dl>
+                {receipt.tradeNote && <p className="league-trade-note-copy">“{receipt.tradeNote}”</p>}
               </div>
             )}
 
@@ -1099,7 +1112,7 @@ function LeagueDialog({
                   {dashboard.orders.slice(0, 8).map((order) => (
                     <button type="button" key={order.orderId} onClick={() => onOpenChart(leagueSecurityTicker({ symbol: order.symbol, securityName: order.securityName, market: order.market, nativeCurrency: order.nativeCurrency, nativePrice: order.nativePrice }))} aria-label={`${order.securityName} 차트 보기`}>
                       <span className={order.side}>{order.side === "buy" ? "매수" : "매도"}</span>
-                      <div><strong>{order.securityName}</strong><small>{order.quantity}주 · {new Date(order.executedAt).toLocaleString("ko-KR")}</small></div>
+                      <div><strong>{order.securityName}</strong><small>{order.quantity}주 · {new Date(order.executedAt).toLocaleString("ko-KR")}</small>{order.tradeNote && <q>{order.tradeNote}</q>}</div>
                       <em>{formatKrwAmount(order.grossKrw)}</em>
                     </button>
                   ))}
@@ -1134,6 +1147,7 @@ function LeagueDialog({
                     <div className="league-holdings">
                       {selectedPlayer.holdings.length ? selectedPlayer.holdings.map((holding) => <button type="button" key={`${holding.market}:${holding.symbol}`} onClick={() => onOpenChart(leagueSecurityTicker({ ...holding, nativePrice: holding.lastNativePrice }))} aria-label={`${holding.securityName} 차트 보기`}><div><strong>{holding.securityName}</strong><small>{holding.symbol} · {holding.market} · {holding.quantity.toLocaleString("ko-KR")}주</small></div><div><strong>{formatKrwAmount(holding.marketValueKrw)}</strong><small className={Number(holding.unrealizedPnlKrw) >= 0 ? "positive" : "negative"}>평가손익 {formatKrwAmount(holding.unrealizedPnlKrw)}</small></div></button>) : <p className="league-empty-copy">보유종목이 없습니다.</p>}
                     </div>
+                    {!selectedPlayer.activityHidden && selectedPlayer.recentTrades.length > 0 && <div className="league-player-trades"><strong>최근 매매</strong>{selectedPlayer.recentTrades.map((activity) => <button type="button" key={activity.id} onClick={() => onOpenChart(leagueSecurityTicker(activity))}><span className={activity.side}>{activity.side === "buy" ? "매수" : "매도"}</span><div><b>{activity.securityName}</b><small>{activity.quantity.toLocaleString("ko-KR")}주 · {new Date(activity.executedAt).toLocaleString("ko-KR")}</small>{activity.tradeNote && <q>{activity.tradeNote}</q>}</div></button>)}</div>}
                     {selectedPlayer.activityHidden && <p className="league-snapshot-time">이 참가자는 매매 활동 피드를 비공개로 설정했습니다.</p>}
                   </div>
                 )}
@@ -1143,8 +1157,8 @@ function LeagueDialog({
             {leagueTab === "activity" && (
               <div className="league-ranking-section" role="tabpanel">
                 <div className="league-section-title"><div><span>LEAGUE TAPE</span><strong>최근 활동</strong></div><button type="button" className="league-refresh" disabled={leagueLoading} onClick={() => void selectLeagueTab("activity")}>{leagueLoading ? "불러오는 중…" : "새로고침"}</button></div>
-                <p className="league-snapshot-time">공개에 동의한 참가자의 체결만 표시합니다.</p>
-                {league?.activity.length ? <div className="league-activity-list">{league.activity.map((activity) => <article key={activity.id}><span className={activity.side}>{activity.side === "buy" ? "매수" : "매도"}</span><div><button type="button" className="league-player-link" onClick={() => loadPlayer(activity.profileId)}>{activity.nickname}</button><button type="button" className="league-stock-link" onClick={() => onOpenChart(leagueSecurityTicker(activity))}>{activity.securityName} <small>차트 →</small></button><small>{activity.market} {activity.symbol} · {activity.quantity.toLocaleString("ko-KR")}주 · {new Date(activity.executedAt).toLocaleString("ko-KR")}</small></div><em>{formatKrwAmount(activity.grossKrw)}</em></article>)}</div> : <p className="league-empty-copy">공개된 매매 활동이 아직 없습니다.</p>}
+                <p className="league-snapshot-time">공개에 동의한 참가자의 체결만 표시합니다. 메모는 개인 의견이며 투자 권유가 아닙니다.</p>
+                {league?.activity.length ? <div className="league-activity-list">{league.activity.map((activity) => <article key={activity.id}><span className={activity.side}>{activity.side === "buy" ? "매수" : "매도"}</span><div><button type="button" className="league-player-link" onClick={() => loadPlayer(activity.profileId)}>{activity.nickname}</button><button type="button" className="league-stock-link" onClick={() => onOpenChart(leagueSecurityTicker(activity))}>{activity.securityName} <small>차트 →</small></button><small>{activity.market} {activity.symbol} · {activity.quantity.toLocaleString("ko-KR")}주 · {new Date(activity.executedAt).toLocaleString("ko-KR")}</small>{activity.tradeNote && <q>{activity.tradeNote}</q>}</div><em>{formatKrwAmount(activity.grossKrw)}</em></article>)}</div> : <p className="league-empty-copy">공개된 매매 활동이 아직 없습니다.</p>}
               </div>
             )}
 

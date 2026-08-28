@@ -75,8 +75,8 @@ try {
 
   const krQuote = async () => quote("TESTKR", "KOSPI", "60000000");
   const simultaneousBuys = await Promise.allSettled([
-    executeTrade(authUser, { symbol: "TESTKR", market: "KOSPI", side: "buy", quantity: 1, clientOrderId: `${suffix}-buy-a` }, krQuote),
-    executeTrade(authUser, { symbol: "TESTKR", market: "KOSPI", side: "buy", quantity: 1, clientOrderId: `${suffix}-buy-b` }, krQuote),
+    executeTrade(authUser, { symbol: "TESTKR", market: "KOSPI", side: "buy", quantity: 1, tradeNote: "#돌파 주봉 저항 확인", clientOrderId: `${suffix}-buy-a` }, krQuote),
+    executeTrade(authUser, { symbol: "TESTKR", market: "KOSPI", side: "buy", quantity: 1, tradeNote: "#돌파 주봉 저항 확인", clientOrderId: `${suffix}-buy-b` }, krQuote),
   ]);
   const successfulBuy = simultaneousBuys.find((result) => result.status === "fulfilled");
   const rejectedBuy = simultaneousBuys.find((result) => result.status === "rejected");
@@ -92,12 +92,19 @@ try {
       market: successfulBuy.value.market,
       side: successfulBuy.value.side,
       quantity: successfulBuy.value.quantity,
+      tradeNote: successfulBuy.value.tradeNote,
       clientOrderId: successfulBuy.value.clientOrderId,
     },
     krQuote,
   );
   assert.equal(replay.replayed, true, "같은 주문 키는 기존 영수증을 반환해야 합니다.");
   assert.equal(replay.orderId, successfulBuy.value.orderId);
+  assert.equal(replay.tradeNote, "#돌파 주봉 저항 확인");
+  await assert.rejects(
+    executeTrade(authUser, { symbol: "TESTKR", market: "KOSPI", side: "buy", quantity: 1, tradeNote: "다른 이유", clientOrderId: successfulBuy.value.clientOrderId }, krQuote),
+    (error: unknown) => error instanceof GameTradeError && error.code === "IDEMPOTENCY_CONFLICT",
+    "같은 주문 키로 메모를 바꾸면 거절되어야 합니다.",
+  );
 
   const simultaneousSells = await Promise.allSettled([
     executeTrade(authUser, { symbol: "TESTKR", market: "KOSPI", side: "sell", quantity: 1, clientOrderId: `${suffix}-sell-a` }, krQuote),
@@ -145,6 +152,7 @@ try {
   assert.equal(dashboard.holdings[0].symbol, "TESTUS");
   assert.equal(dashboard.holdings[0].quantity, 2);
   assert.equal(dashboard.orders.length, 3);
+  assert(dashboard.orders.some((order) => order.tradeNote === "#돌파 주봉 저항 확인"));
   assert(!JSON.stringify(dashboard).includes(authUser.email));
 
   console.log("Phase 2 검증 완료: 초과매수·초과매도·재전송·오래된 시세가 차단되고 원장과 현금이 일치합니다.");

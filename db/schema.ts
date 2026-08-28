@@ -252,6 +252,7 @@ export const orders = pgTable(
     market: varchar("market", { length: 16 }).notNull(),
     side: orderSide("side").notNull(),
     quantity: integer("quantity").notNull(),
+    tradeNote: varchar("trade_note", { length: 200 }),
     status: orderStatus("status").notNull().default("filled"),
     clientOrderId: varchar("client_order_id", { length: 128 }).notNull(),
     requestedAt: timestamp("requested_at", { withTimezone: true })
