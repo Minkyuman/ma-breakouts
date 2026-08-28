@@ -68,6 +68,29 @@ export type Candidate = Ticker & {
   status: "근접 돌파" | "상승 진행" | "추격 주의";
 };
 
+export type TradingQuote = {
+  ticker: Ticker;
+  nativePrice: string;
+  nativeCurrency: "KRW" | "USD";
+  quoteSource: string;
+  quoteAt: Date;
+  quoteReceivedAt: Date;
+  fxRate: string;
+  fxSource: string;
+  fxAt: Date;
+  fxReceivedAt: Date;
+};
+
+export class MarketQuoteError extends Error {
+  constructor(
+    public readonly code: "UNSUPPORTED_SECURITY" | "QUOTE_UNAVAILABLE" | "STALE_QUOTE" | "STALE_FX",
+    message: string,
+  ) {
+    super(message);
+    this.name = "MarketQuoteError";
+  }
+}
+
 const NAVER_HEADERS = {
   accept: "application/json",
   "user-agent":
@@ -212,11 +235,29 @@ export async function fetchUsUniverse(filter: MarketFilter, assetFilter: AssetFi
     .sort((a, b) => b.marketCap - a.marketCap || a.code.localeCompare(b.code));
 }
 
-export async function fetchUsdKrwRate(): Promise<number> {
-  const payload = await fetchUsJson<{ result?: string; rates?: { KRW?: number } }>("https://open.er-api.com/v6/latest/USD");
+export async function fetchUsdKrwSnapshot() {
+  const receivedAt = new Date();
+  const payload = await fetchUsJson<{
+    result?: string;
+    rates?: { KRW?: number };
+    time_last_update_unix?: number;
+  }>("https://open.er-api.com/v6/latest/USD");
   const rate = payload.rates?.KRW;
   if (!rate || !Number.isFinite(rate)) throw new Error("원/달러 환율을 불러오지 못했습니다.");
-  return rate;
+  const quotedAt = payload.time_last_update_unix
+    ? new Date(payload.time_last_update_unix * 1000)
+    : receivedAt;
+  return {
+    rate,
+    rateText: rate.toFixed(8),
+    source: "open.er-api.com",
+    quotedAt,
+    receivedAt,
+  };
+}
+
+export async function fetchUsdKrwRate(): Promise<number> {
+  return (await fetchUsdKrwSnapshot()).rate;
 }
 
 /** Nasdaq's quote metadata includes the current NDX constituent flag. */
@@ -377,6 +418,88 @@ export async function fetchTickerDailyChart(ticker: Pick<Ticker, "code" | "marke
   return ticker.market === "KOSPI" || ticker.market === "KOSDAQ"
     ? fetchDailyChart(ticker.code, years)
     : fetchUsDailyChart(ticker.code, years);
+}
+
+function quoteDate(date: string) {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export async function fetchTradingQuote(
+  symbolValue: string,
+  marketValue: Market,
+  now = new Date(),
+): Promise<TradingQuote> {
+  const symbol = symbolValue.trim().toUpperCase();
+  const candidates = marketValue === "KOSPI" || marketValue === "KOSDAQ"
+    ? await fetchUniverse(marketValue.toLowerCase() as MarketFilter, "stock")
+    : await fetchUsUniverse(marketValue.toLowerCase() as MarketFilter, "stock");
+  const ticker = candidates.find(
+    (candidate) =>
+      candidate.code === symbol &&
+      candidate.market === marketValue &&
+      candidate.assetType === "STOCK",
+  );
+  if (!ticker) {
+    throw new MarketQuoteError(
+      "UNSUPPORTED_SECURITY",
+      "모의투자는 한국·미국 보통주만 지원합니다.",
+    );
+  }
+
+  const rows = await fetchTickerDailyChart(ticker, 1);
+  const latest = aggregateCandles(rows, "daily").at(-1);
+  const quotedAt = latest ? quoteDate(latest.date) : null;
+  if (!latest || latest.close <= 0 || !quotedAt) {
+    throw new MarketQuoteError("QUOTE_UNAVAILABLE", "체결에 사용할 시세가 없습니다.");
+  }
+
+  const quoteAgeMs = now.getTime() - quotedAt.getTime();
+  if (quoteAgeMs < -36 * 60 * 60 * 1000 || quoteAgeMs > 8 * 24 * 60 * 60 * 1000) {
+    throw new MarketQuoteError(
+      "STALE_QUOTE",
+      "최근 8일 이내의 종가가 없어 주문을 체결할 수 없습니다.",
+    );
+  }
+
+  const nativeCurrency = ticker.currency === "USD" ? "USD" : "KRW";
+  const nativePrice = latest.close.toFixed(nativeCurrency === "KRW" ? 0 : 6);
+  if (nativeCurrency === "KRW") {
+    return {
+      ticker,
+      nativePrice,
+      nativeCurrency,
+      quoteSource: "naver-domestic-day",
+      quoteAt: quotedAt,
+      quoteReceivedAt: now,
+      fxRate: "1.00000000",
+      fxSource: "identity-KRW",
+      fxAt: quotedAt,
+      fxReceivedAt: now,
+    };
+  }
+
+  const fx = await fetchUsdKrwSnapshot();
+  const fxAgeMs = now.getTime() - fx.quotedAt.getTime();
+  if (fxAgeMs < -36 * 60 * 60 * 1000 || fxAgeMs > 5 * 24 * 60 * 60 * 1000) {
+    throw new MarketQuoteError(
+      "STALE_FX",
+      "최근 5일 이내의 원/달러 환율이 없어 주문을 체결할 수 없습니다.",
+    );
+  }
+
+  return {
+    ticker,
+    nativePrice,
+    nativeCurrency,
+    quoteSource: "nasdaq-historical-day",
+    quoteAt: quotedAt,
+    quoteReceivedAt: now,
+    fxRate: fx.rateText,
+    fxSource: fx.source,
+    fxAt: fx.quotedAt,
+    fxReceivedAt: fx.receivedAt,
+  };
 }
 
 function isoWeekKey(value: Date): string {

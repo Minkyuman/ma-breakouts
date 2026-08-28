@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AuthUser } from "@/lib/auth";
+import type { FavoriteList } from "@/lib/favorites";
+import type { GameOverview } from "@/lib/game";
+import type { LeagueOverview, PublicPlayerDetail } from "@/lib/game-league";
+import type { PortfolioDashboard, TradeReceipt, TradeSide } from "@/lib/game-trading";
 import type {
   AssetFilter,
   Candidate,
@@ -13,65 +17,36 @@ import type {
   ScreeningMaPeriod,
   ScreeningTimeframe,
   Ticker,
-  Timeframe,
 } from "@/lib/market";
-
-const INITIAL_RESULTS: Candidate[] = [
-  {
-    code: "300720", name: "한일시멘트", market: "KOSPI", assetType: "STOCK", timeframe: "weekly", maPeriod: 240, marketCap: 1_100_000_000_000,
-    price: 15350, date: "2026-08-21", previousClose: 14900, previousMa: 15005,
-    close: 15350, ma: 14981, gapPct: 2.46, previousVolume: 299691, volume: 398869,
-    volumeChangePct: 33.1, volumeStatus: "증가", status: "근접 돌파",
-  },
-  {
-    code: "330350", name: "위더스제약", market: "KOSDAQ", assetType: "STOCK", timeframe: "weekly", maPeriod: 240, marketCap: 115_600_000_000,
-    price: 8760, date: "2026-08-21", previousClose: 7560, previousMa: 8038,
-    close: 8760, ma: 8021, gapPct: 9.22, previousVolume: 388800, volume: 1381636,
-    volumeChangePct: 255.4, volumeStatus: "증가", status: "추격 주의",
-  },
-  {
-    code: "006660", name: "삼성공조", market: "KOSPI", assetType: "STOCK", timeframe: "weekly", maPeriod: 240, marketCap: 112_500_000_000,
-    price: 13850, date: "2026-08-21", previousClose: 11630, previousMa: 12018,
-    close: 13850, ma: 12004, gapPct: 15.37, previousVolume: 1220627, volume: 15447139,
-    volumeChangePct: 1165.5, volumeStatus: "증가", status: "추격 주의",
-  },
-  {
-    code: "217190", name: "제너셈", market: "KOSDAQ", assetType: "STOCK", timeframe: "weekly", maPeriod: 240, marketCap: 83_400_000_000,
-    price: 6340, date: "2026-08-21", previousClose: 6000, previousMa: 6103,
-    close: 6340, ma: 6104, gapPct: 3.87, previousVolume: 713594, volume: 2888758,
-    volumeChangePct: 304.8, volumeStatus: "증가", status: "상승 진행",
-  },
-  {
-    code: "070300", name: "퀀텀레일", market: "KOSDAQ", assetType: "STOCK", timeframe: "weekly", maPeriod: 240, marketCap: 72_800_000_000,
-    price: 2050, date: "2026-08-21", previousClose: 1738, previousMa: 2046,
-    close: 2050, ma: 2044, gapPct: 0.29, previousVolume: 1525956, volume: 5693200,
-    volumeChangePct: 273.1, volumeStatus: "증가", status: "근접 돌파",
-  },
-  {
-    code: "000950", name: "전방", market: "KOSPI", assetType: "STOCK", timeframe: "weekly", maPeriod: 240, marketCap: 57_000_000_000,
-    price: 33900, date: "2026-08-21", previousClose: 31900, previousMa: 33258,
-    close: 33900, ma: 33233, gapPct: 2.01, previousVolume: 8041, volume: 23355,
-    volumeChangePct: 190.4, volumeStatus: "증가", status: "근접 돌파",
-  },
-  {
-    code: "134060", name: "이퓨쳐", market: "KOSDAQ", assetType: "STOCK", timeframe: "weekly", maPeriod: 240, marketCap: 25_900_000_000,
-    price: 5430, date: "2026-08-21", previousClose: 4960, previousMa: 5279,
-    close: 5430, ma: 5267, gapPct: 3.09, previousVolume: 29940, volume: 29717,
-    volumeChangePct: -0.7, volumeStatus: "감소", status: "상승 진행",
-  },
-  {
-    code: "001515", name: "SK증권우", market: "KOSPI", assetType: "STOCK", timeframe: "weekly", maPeriod: 240, marketCap: 10_200_000_000,
-    price: 5230, date: "2026-08-21", previousClose: 4260, previousMa: 5163,
-    close: 5230, ma: 5152, gapPct: 1.51, previousVolume: 18977, volume: 204441,
-    volumeChangePct: 977.3, volumeStatus: "증가", status: "근접 돌파",
-  },
-];
 
 type MarketWatch = {
   id: string;
   name: string;
   shortName: string;
   unit: "pt" | "원";
+};
+
+type AdminGameOverview = {
+  seasons: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    status: "draft" | "open" | "closed" | "archived";
+    startsAt: string;
+    endsAt: string;
+    initialCashKrw: string;
+    ruleVersion: number;
+    participantCount: number;
+  }>;
+  auditEvents: Array<{
+    id: string;
+    action: string;
+    targetType: string;
+    targetId: string | null;
+    requestId: string;
+    metadata: Record<string, string | number | boolean | null>;
+    createdAt: string;
+  }>;
 };
 
 const MARKET_WATCHES: MarketWatch[] = [
@@ -121,6 +96,10 @@ function formatVolume(value: number) {
   return number.format(value);
 }
 
+function formatKrwAmount(value: string) {
+  return `${number.format(Number(value))}원`;
+}
+
 function signed(value: number | null, digits = 1) {
   if (value === null) return "비교 불가";
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
@@ -128,6 +107,25 @@ function signed(value: number | null, digits = 1) {
 
 function signedPrice(value: number) {
   return `${value >= 0 ? "+" : "−"}${formatPrice(Math.abs(value))}`;
+}
+
+function leagueSecurityTicker(security: {
+  symbol: string;
+  securityName: string;
+  market: string;
+  nativeCurrency?: string;
+  nativePrice?: string;
+}): Ticker {
+  const isUsd = security.nativeCurrency === "USD" || ["NASDAQ", "NYSE", "AMEX"].includes(security.market);
+  return {
+    code: security.symbol,
+    name: security.securityName,
+    market: security.market as Ticker["market"],
+    assetType: "STOCK",
+    marketCap: 0,
+    price: Number(security.nativePrice) || 0,
+    currency: isUsd ? "USD" : "KRW",
+  };
 }
 
 type PriceChangeSummary = {
@@ -171,10 +169,14 @@ function ChartCanvas({
   const [hoverPoint, setHoverPoint] = useState<{ y: number; price: number } | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<{ y: number; price: number } | null>(null);
-  const [panStart, setPanStart] = useState(0);
+  // Store the viewport as a distance from the newest candle. An offset of zero
+  // keeps the chart pinned to the latest data while its range changes.
+  const [panOffset, setPanOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const maxPanStart = Math.max(0, points.length - range);
-  const visible = useMemo(() => points.slice(panStart, panStart + range), [points, panStart, range]);
+  const safePanOffset = Math.min(panOffset, maxPanStart);
+  const safePanStart = maxPanStart - safePanOffset;
+  const visible = useMemo(() => points.slice(safePanStart, safePanStart + range), [points, safePanStart, range]);
   const focusedIndex = hoverIndex ?? selectedIndex;
   const focusedPoint = hoverPoint ?? selectedPoint;
   const active = focusedIndex === null ? visible.at(-1) : visible[focusedIndex];
@@ -188,13 +190,17 @@ function ChartCanvas({
   const candleDirectionLabel = candleDirection === "up" ? "양봉" : candleDirection === "down" ? "음봉" : "보합";
 
   useEffect(() => {
-    setPanStart(maxPanStart);
-  }, [maxPanStart]);
-
-  useEffect(() => {
+    // A selected candle belongs to the previous data window and must not leak into the next readout.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedIndex(null);
     setSelectedPoint(null);
   }, [points, range]);
+
+  useEffect(() => {
+    // A newly opened security or timeframe should always start at the newest candle.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPanOffset(0);
+  }, [points]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -381,7 +387,7 @@ function ChartCanvas({
             };
             dragRef.current = null;
           } else {
-            dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, start: panStart };
+            dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, start: safePanStart };
           }
           setDragging(true);
           setHoverIndex(null);
@@ -397,7 +403,7 @@ function ChartCanvas({
           if (remainingPointers.length === 1) {
             const [pointerId, pointer] = remainingPointers[0];
             pinchRef.current = null;
-            dragRef.current = { pointerId, x: pointer.x, y: pointer.y, start: panStart };
+            dragRef.current = { pointerId, x: pointer.x, y: pointer.y, start: safePanStart };
           } else if (!remainingPointers.length) {
             pinchRef.current = null;
             setDragging(false);
@@ -453,7 +459,8 @@ function ChartCanvas({
             const plotWidth = rect.width - left - right;
       const xStep = plotWidth / Math.max(visible.length, 1);
             const deltaBars = Math.round((event.clientX - dragRef.current.x) / Math.max(xStep, 1));
-            setPanStart(Math.max(0, Math.min(maxPanStart, dragRef.current.start - deltaBars)));
+            const nextPanStart = Math.max(0, Math.min(maxPanStart, dragRef.current.start - deltaBars));
+            setPanOffset(maxPanStart - nextPanStart);
             return;
           }
           const ratio = Math.max(0, Math.min(0.999, (event.clientX - rect.left - left) / (rect.width - left - right)));
@@ -560,6 +567,636 @@ export default function Home() {
   return <Dashboard authUser={authStatus.user} />;
 }
 
+function FavoriteDialog({
+  currentTicker,
+  onClose,
+  onOpenChart,
+  onListsChange,
+}: {
+  currentTicker: Ticker | null;
+  onClose: () => void;
+  onOpenChart: (ticker: Ticker) => void;
+  onListsChange: (lists: FavoriteList[]) => void;
+}) {
+  const [lists, setLists] = useState<FavoriteList[]>([]);
+  const [selectedListId, setSelectedListId] = useState("");
+  const [newListName, setNewListName] = useState("");
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const selectedList = lists.find((list) => list.id === selectedListId) ?? lists[0] ?? null;
+  const currentSaved = Boolean(currentTicker && selectedList?.items.some((item) => item.symbol === currentTicker.code && item.market === currentTicker.market));
+
+  const applyLists = useCallback((nextLists: FavoriteList[]) => {
+    setLists(nextLists);
+    onListsChange(nextLists);
+    setSelectedListId((current) => nextLists.some((list) => list.id === current) ? current : nextLists[0]?.id ?? "");
+  }, [onListsChange]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", closeOnEscape);
+    document.body.style.overflow = "hidden";
+    const focusFrame = requestAnimationFrame(() => closeButtonRef.current?.focus());
+    fetch("/api/favorites", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as { lists?: FavoriteList[]; error?: string };
+        if (!response.ok || !payload.lists) throw new Error(payload.error || "즐겨찾기를 불러오지 못했습니다.");
+        applyLists(payload.lists);
+      })
+      .catch((loadError) => {
+        if (loadError instanceof Error && loadError.name !== "AbortError") setError(loadError.message);
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => {
+      controller.abort();
+      cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = "";
+    };
+  }, [applyLists, onClose]);
+
+  async function mutate(input: Record<string, unknown>) {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const payload = await response.json() as { lists?: FavoriteList[]; error?: string };
+      if (!response.ok || !payload.lists) throw new Error(payload.error || "즐겨찾기를 저장하지 못했습니다.");
+      applyLists(payload.lists);
+      return payload.lists;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "즐겨찾기를 저장하지 못했습니다.");
+      throw saveError;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createList(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!newListName.trim()) return;
+    try {
+      const createdName = newListName.normalize("NFKC").trim().replace(/\s+/gu, " ");
+      const nextLists = await mutate({ action: "create_list", name: newListName });
+      const createdList = nextLists.find((list) => list.name === createdName);
+      if (createdList) setSelectedListId(createdList.id);
+      setNewListName("");
+    } catch { /* Error is displayed in the dialog. */ }
+  }
+
+  return (
+    <div className="favorite-dialog-backdrop" role="presentation">
+      <section className="favorite-dialog" role="dialog" aria-modal="true" aria-labelledby="favorite-dialog-title">
+        <button ref={closeButtonRef} className="favorite-dialog-close" type="button" onClick={onClose} aria-label="즐겨찾기 닫기">×</button>
+        <header className="favorite-dialog-heading">
+          <span aria-hidden="true">★</span>
+          <div><p>MY WATCHLISTS</p><h2 id="favorite-dialog-title">즐겨찾기</h2></div>
+        </header>
+
+        {loading ? <div className="favorite-loading">즐겨찾기를 불러오는 중…</div> : (
+          <>
+            <form className="favorite-create-form" onSubmit={createList}>
+              <input value={newListName} onChange={(event) => setNewListName(event.target.value)} maxLength={20} placeholder="새 목록 이름" aria-label="새 즐겨찾기 목록 이름" />
+              <button type="submit" disabled={saving || !newListName.trim()}>목록 만들기</button>
+            </form>
+
+            <div className="favorite-list-tabs" role="tablist" aria-label="즐겨찾기 목록">
+              {lists.map((list) => <button type="button" role="tab" aria-selected={selectedList?.id === list.id} className={selectedList?.id === list.id ? "active" : ""} key={list.id} onClick={() => { setSelectedListId(list.id); setRenaming(false); }}>{list.name}<small>{list.items.length}</small></button>)}
+            </div>
+
+            {selectedList && <>
+              <div className="favorite-list-heading">
+                {renaming ? (
+                  <form onSubmit={(event) => { event.preventDefault(); void mutate({ action: "rename_list", listId: selectedList.id, name: renameValue }).then(() => setRenaming(false)).catch(() => undefined); }}>
+                    <input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} maxLength={20} aria-label="즐겨찾기 목록 새 이름" />
+                    <button type="submit" disabled={saving || !renameValue.trim()}>저장</button>
+                    <button type="button" onClick={() => setRenaming(false)}>취소</button>
+                  </form>
+                ) : <div><strong>{selectedList.name}</strong><small>{selectedList.items.length}종목</small></div>}
+                {!renaming && <div className="favorite-list-actions"><button type="button" onClick={() => { setRenameValue(selectedList.name); setRenaming(true); }}>이름 변경</button><button type="button" className="danger" disabled={lists.length <= 1 || saving} onClick={() => { if (window.confirm(`‘${selectedList.name}’ 목록을 삭제할까요?`)) void mutate({ action: "delete_list", listId: selectedList.id }).catch(() => undefined); }}>목록 삭제</button></div>}
+              </div>
+
+              {currentTicker && currentTicker.code !== "MARKET" && (
+                <button type="button" className={`favorite-add-current${currentSaved ? " saved" : ""}`} disabled={saving || currentSaved} onClick={() => void mutate({ action: "add_item", listId: selectedList.id, symbol: currentTicker.code, securityName: currentTicker.name, market: currentTicker.market, assetType: currentTicker.assetType }).catch(() => undefined)}>
+                  <span>{currentSaved ? "✓" : "+"}</span><div><strong>{currentTicker.name}</strong><small>{currentTicker.code} · {currentTicker.market}</small></div><em>{currentSaved ? "저장됨" : "현재 종목 추가"}</em>
+                </button>
+              )}
+
+              <div className="favorite-items">
+                {selectedList.items.map((item) => (
+                  <article key={item.id}>
+                    <button type="button" className="favorite-item-open" onClick={() => onOpenChart({ code: item.symbol, name: item.securityName, market: item.market, assetType: item.assetType, marketCap: 0, price: 0, currency: item.nativeCurrency })}>
+                      <strong>{item.securityName}</strong><small>{item.symbol} · {item.market} · {item.assetType === "STOCK" ? "주식" : item.assetType}</small>
+                    </button>
+                    <button type="button" className="favorite-item-remove" disabled={saving} onClick={() => void mutate({ action: "remove_item", listId: selectedList.id, itemId: item.id }).catch(() => undefined)} aria-label={`${item.securityName} 즐겨찾기에서 삭제`}>×</button>
+                  </article>
+                ))}
+                {!selectedList.items.length && <p>아직 저장한 종목이 없습니다.<br />차트에서 관심 종목을 추가해 보세요.</p>}
+              </div>
+            </>}
+          </>
+        )}
+        {error && <p className="favorite-error" role="alert">{error}</p>}
+      </section>
+    </div>
+  );
+}
+
+function LeagueDialog({
+  onClose,
+  onOpenChart,
+  ticker,
+}: {
+  onClose: () => void;
+  onOpenChart: (ticker: Ticker) => void;
+  ticker: Ticker | null;
+}) {
+  const [game, setGame] = useState<GameOverview | null>(null);
+  const [dashboard, setDashboard] = useState<PortfolioDashboard | null>(null);
+  const [league, setLeague] = useState<LeagueOverview | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<PublicPlayerDetail | null>(null);
+  const [admin, setAdmin] = useState<AdminGameOverview | null>(null);
+  const [leagueTab, setLeagueTab] = useState<"portfolio" | "ranking" | "activity" | "admin">("portfolio");
+  const [loading, setLoading] = useState(true);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [leagueLoading, setLeagueLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [tradeSubmitting, setTradeSubmitting] = useState(false);
+  const [nickname, setNickname] = useState("");
+  const [acceptedRules, setAcceptedRules] = useState(false);
+  const [activityFeedVisible, setActivityFeedVisible] = useState(true);
+  const [tradeSide, setTradeSide] = useState<TradeSide>("buy");
+  const [tradeQuantity, setTradeQuantity] = useState(1);
+  const [tradeConfirming, setTradeConfirming] = useState(false);
+  const [receipt, setReceipt] = useState<TradeReceipt | null>(null);
+  const [adminDraft, setAdminDraft] = useState({ name: "", slug: "", startsAt: "", endsAt: "", initialCashKrw: "100000000", status: "draft" });
+  const [error, setError] = useState("");
+  const [leagueNotice, setLeagueNotice] = useState("");
+  const [leagueRefreshRemaining, setLeagueRefreshRemaining] = useState(0);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  const loadPortfolio = useCallback(async (signal?: AbortSignal) => {
+    setPortfolioLoading(true);
+    try {
+      const response = await fetch("/api/game/portfolio", { signal, cache: "no-store" });
+      const payload = (await response.json()) as { dashboard?: PortfolioDashboard; error?: string };
+      if (!response.ok || !payload.dashboard) {
+        throw new Error(payload.error || "내 투자 정보를 불러오지 못했습니다.");
+      }
+      setDashboard(payload.dashboard);
+    } finally {
+      if (!signal?.aborted) setPortfolioLoading(false);
+    }
+  }, []);
+
+  const loadLeague = useCallback(async (refresh = false, signal?: AbortSignal) => {
+    setLeagueLoading(true);
+    try {
+      const response = await fetch("/api/game/leaderboard", {
+        method: refresh ? "POST" : "GET",
+        signal,
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as { league?: LeagueOverview; error?: string };
+      if (response.status === 429) {
+        const retryAfter = Math.max(1, Number(response.headers.get("retry-after")) || 1);
+        setLeagueRefreshRemaining(retryAfter);
+      } else if (refresh && response.ok) {
+        setLeagueRefreshRemaining(0);
+      }
+      if (!response.ok || !payload.league) throw new Error(payload.error || "리그 순위를 불러오지 못했습니다.");
+      setLeague(payload.league);
+      setSelectedPlayer(null);
+    } finally {
+      if (!signal?.aborted) setLeagueLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (leagueRefreshRemaining <= 0) return;
+    const timer = window.setInterval(() => {
+      setLeagueRefreshRemaining((remaining) => Math.max(0, remaining - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [leagueRefreshRemaining]);
+
+  const loadPlayer = useCallback(async (profileId: string) => {
+    setLeagueLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/game/players/${encodeURIComponent(profileId)}`, { cache: "no-store" });
+      const payload = (await response.json()) as { player?: PublicPlayerDetail; error?: string };
+      if (!response.ok || !payload.player) throw new Error(payload.error || "참가자 정보를 불러오지 못했습니다.");
+      setSelectedPlayer(payload.player);
+    } catch (playerError) {
+      setError(playerError instanceof Error ? playerError.message : "참가자 정보를 불러오지 못했습니다.");
+    } finally {
+      setLeagueLoading(false);
+    }
+  }, []);
+
+  const loadAdmin = useCallback(async (signal?: AbortSignal) => {
+    const response = await fetch("/api/admin/game/seasons", { signal, cache: "no-store" });
+    if (response.status === 403) {
+      setAdmin(null);
+      return;
+    }
+    const payload = (await response.json()) as { admin?: AdminGameOverview; error?: string };
+    if (!response.ok || !payload.admin) throw new Error(payload.error || "리그 운영 정보를 불러오지 못했습니다.");
+    setAdmin(payload.admin);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    document.body.style.overflow = "hidden";
+    const focusFrame = requestAnimationFrame(() => closeButtonRef.current?.focus());
+
+    fetch("/api/game/me", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const payload = (await response.json()) as { game?: GameOverview; error?: string };
+        if (!response.ok || !payload.game) {
+          throw new Error(payload.error || "리그 정보를 불러오지 못했습니다.");
+        }
+        setGame(payload.game);
+        setNickname(payload.game.profile?.nickname ?? "");
+        setActivityFeedVisible(payload.game.profile?.activityFeedVisible ?? true);
+        if (payload.game.status === "ready") {
+          return Promise.all([loadPortfolio(controller.signal), loadLeague(false, controller.signal), loadAdmin(controller.signal)]);
+        }
+      })
+      .catch((fetchError) => {
+        if (fetchError instanceof Error && fetchError.name !== "AbortError") {
+          setError(fetchError.message);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+      cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = "";
+    };
+  }, [loadAdmin, loadLeague, loadPortfolio, onClose]);
+
+  async function enroll(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/game/profile", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nickname, acceptedRules, activityFeedVisible }),
+      });
+      const payload = (await response.json()) as { game?: GameOverview; error?: string };
+      if (!response.ok || !payload.game) {
+        throw new Error(payload.error || "리그 참가 정보를 저장하지 못했습니다.");
+      }
+      setGame(payload.game);
+      if (payload.game.status === "ready") await Promise.all([loadPortfolio(), loadLeague(), loadAdmin()]);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "리그 참가에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitTrade(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!ticker || !tradeConfirming) return;
+    setTradeSubmitting(true);
+    setError("");
+    setLeagueNotice("");
+    setReceipt(null);
+    try {
+      const response = await fetch("/api/game/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          symbol: ticker.code,
+          market: ticker.market,
+          side: tradeSide,
+          quantity: tradeQuantity,
+          clientOrderId: crypto.randomUUID(),
+        }),
+      });
+      const payload = (await response.json()) as { receipt?: TradeReceipt; error?: string };
+      if (!response.ok || !payload.receipt) {
+        throw new Error(payload.error || "모의 주문을 체결하지 못했습니다.");
+      }
+      setReceipt(payload.receipt);
+      setTradeConfirming(false);
+      await loadPortfolio();
+      try {
+        await loadLeague(false);
+        setLeagueNotice("체결 내역과 활동을 반영했습니다. 순위는 필요할 때 현재 시세로 갱신해 주세요.");
+      } catch {
+        setLeagueNotice("체결은 완료됐습니다. 순위와 활동은 탭에서 다시 불러와 주세요.");
+      }
+    } catch (tradeError) {
+      setError(tradeError instanceof Error ? tradeError.message : "모의 주문을 체결하지 못했습니다.");
+    } finally {
+      setTradeSubmitting(false);
+    }
+  }
+
+  async function selectLeagueTab(nextTab: "portfolio" | "ranking" | "activity" | "admin") {
+    setLeagueTab(nextTab);
+    setError("");
+    setLeagueNotice("");
+    if (nextTab === "ranking" || nextTab === "activity") {
+      try {
+        await loadLeague(false);
+        if (nextTab === "ranking") await loadPortfolio();
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "리그 정보를 갱신하지 못했습니다.");
+      }
+    }
+  }
+
+  async function refreshRanking() {
+    if (leagueRefreshRemaining > 0) return;
+    setError("");
+    setLeagueNotice("");
+    try {
+      await loadLeague(true);
+      await loadPortfolio();
+      setLeagueNotice("모든 참가자의 순위를 현재 시세로 갱신했습니다.");
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "평가를 갱신하지 못했습니다.");
+    }
+  }
+
+  async function createAdminSeason(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/game/seasons", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...adminDraft,
+          startsAt: new Date(adminDraft.startsAt).toISOString(),
+          endsAt: new Date(adminDraft.endsAt).toISOString(),
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "시즌을 만들지 못했습니다.");
+      setAdminDraft({ name: "", slug: "", startsAt: "", endsAt: "", initialCashKrw: "100000000", status: "draft" });
+      await loadAdmin();
+    } catch (adminError) {
+      setError(adminError instanceof Error ? adminError.message : "시즌을 만들지 못했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const estimatedTradeKrw = ticker
+    ? ticker.price * (ticker.currency === "USD" ? ticker.exchangeRate ?? 0 : 1) * tradeQuantity
+    : 0;
+
+  return (
+    <div className="league-dialog-backdrop" role="presentation">
+      <section
+        className="league-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="league-dialog-title"
+      >
+        <button ref={closeButtonRef} className="league-dialog-close" type="button" onClick={onClose} aria-label="선 넘는 리그 닫기">×</button>
+        <div className="league-dialog-heading">
+          <span className="league-mark">₩</span>
+          <div>
+            <p>LINE BREAKER PAPER LEAGUE</p>
+            <h2 id="league-dialog-title">선 넘는 리그</h2>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="league-loading"><span />리그 정보를 불러오는 중…</div>
+        ) : !game ? (
+          <div className="league-unavailable">
+            <strong>리그 정보를 불러오지 못했습니다.</strong>
+            <p>{error || "잠시 후 다시 시도해 주세요."}</p>
+          </div>
+        ) : game.status === "ready" && game.season && game.profile && game.portfolio ? (
+          <div className="league-ready">
+            <div className="league-season-line">
+              <span>진행 중</span>
+              <strong>{game.season.name}</strong>
+            </div>
+            <div className="league-player">
+              <small>플레이어</small>
+              <strong>{game.profile.nickname}</strong>
+            </div>
+            <div className="league-tabs" role="tablist" aria-label="리그 메뉴">
+              <button type="button" role="tab" aria-selected={leagueTab === "portfolio"} className={leagueTab === "portfolio" ? "active" : ""} onClick={() => void selectLeagueTab("portfolio")}>내 투자</button>
+              <button type="button" role="tab" aria-selected={leagueTab === "ranking"} className={leagueTab === "ranking" ? "active" : ""} onClick={() => void selectLeagueTab("ranking")}>순위</button>
+              <button type="button" role="tab" aria-selected={leagueTab === "activity"} className={leagueTab === "activity" ? "active" : ""} onClick={() => void selectLeagueTab("activity")}>활동</button>
+              {admin && <button type="button" role="tab" aria-selected={leagueTab === "admin"} className={`admin-tab${leagueTab === "admin" ? " active" : ""}`} onClick={() => void selectLeagueTab("admin")}>운영</button>}
+            </div>
+
+            {leagueTab === "portfolio" && <>
+              <div className="league-balance-grid">
+              <article><span>보유 현금</span><strong>{formatKrwAmount(dashboard?.portfolio.cashKrw ?? game.portfolio.cashKrw)}</strong></article>
+              <article><span>총 평가자산</span><strong>{formatKrwAmount(dashboard?.portfolio.equityKrw ?? game.portfolio.equityKrw)}</strong></article>
+              </div>
+
+            {ticker && ticker.assetType === "STOCK" && (
+              <form className="league-trade-ticket" onSubmit={submitTrade}>
+                <div className="league-section-title">
+                  <div><span>SIMULATED ORDER</span><strong>{ticker.name} <small>{ticker.code} · {ticker.market}</small></strong></div>
+                  <em>사이버 머니 · 실제 주문 아님</em>
+                </div>
+                <div className="league-trade-controls">
+                  <div className="league-side-buttons" aria-label="모의 주문 방향">
+                    <button type="button" className={tradeSide === "buy" ? "active buy" : ""} onClick={() => { setTradeSide("buy"); setTradeConfirming(false); }}>매수</button>
+                    <button type="button" className={tradeSide === "sell" ? "active sell" : ""} onClick={() => { setTradeSide("sell"); setTradeConfirming(false); }}>매도</button>
+                  </div>
+                  <label><span>수량</span><input type="number" min="1" max="1000000" step="1" value={tradeQuantity} onChange={(event) => { setTradeQuantity(Math.max(1, Math.floor(Number(event.target.value) || 1))); setTradeConfirming(false); }} /></label>
+                  <div className="league-trade-estimate"><span>화면가 기준 예상</span><strong>{estimatedTradeKrw > 0 ? `${formatPrice(estimatedTradeKrw)}원` : "서버에서 계산"}</strong></div>
+                </div>
+                {tradeConfirming ? (
+                  <div className="league-trade-confirmation">
+                    <p><strong>{ticker.name}</strong> {tradeSide === "buy" ? "매수" : "매도"} {tradeQuantity.toLocaleString("ko-KR")}주</p>
+                    <small>확정 시 서버가 최신 지연 시세와 환율을 다시 조회합니다. 화면의 예상 금액과 실제 모의 체결 금액은 다를 수 있습니다.</small>
+                    <div><button type="button" onClick={() => setTradeConfirming(false)}>취소</button><button type="submit" disabled={tradeSubmitting}>{tradeSubmitting ? "체결 중…" : "서버 시세로 체결 확정"}</button></div>
+                  </div>
+                ) : (
+                  <button className="league-trade-review" type="button" onClick={() => setTradeConfirming(true)}>주문 내용 확인</button>
+                )}
+              </form>
+            )}
+
+            {receipt && (
+              <div className="league-receipt" role="status">
+                <div><span>체결 완료</span><strong>{receipt.securityName} · {receipt.side === "buy" ? "매수" : "매도"} {receipt.quantity}주</strong></div>
+                <dl>
+                  <div><dt>체결가</dt><dd>{receipt.nativeCurrency === "USD" ? `$${Number(receipt.nativePrice).toLocaleString("en-US")}` : `${formatPrice(Number(receipt.nativePrice))}원`}</dd></div>
+                  <div><dt>원화 금액</dt><dd>{formatKrwAmount(receipt.grossKrw)}</dd></div>
+                  <div><dt>시세 시각</dt><dd>{new Date(receipt.quoteAt).toLocaleString("ko-KR")}</dd></div>
+                  <div><dt>환율</dt><dd>{receipt.nativeCurrency === "USD" ? `${Number(receipt.fxRate).toFixed(2)} · ${new Date(receipt.fxAt).toLocaleString("ko-KR")}` : "KRW 1:1"}</dd></div>
+                </dl>
+              </div>
+            )}
+
+            <div className="league-portfolio-section">
+              <div className="league-section-title"><div><span>MY PORTFOLIO</span><strong>보유종목</strong></div><em>{dashboard?.portfolio.valuationNote}</em></div>
+              {portfolioLoading ? <div className="league-inline-loading">내 투자 정보를 갱신하는 중…</div> : dashboard?.holdings.length ? (
+                <div className="league-holdings">
+                  {dashboard.holdings.map((holding) => (
+                    <button type="button" key={`${holding.market}:${holding.symbol}`} onClick={() => onOpenChart(leagueSecurityTicker({ ...holding, nativePrice: holding.lastNativePrice }))} aria-label={`${holding.securityName} 차트 보기`}>
+                      <div><strong>{holding.securityName}</strong><small>{holding.symbol} · {holding.market} · {holding.quantity.toLocaleString("ko-KR")}주</small></div>
+                      <div><strong>{formatKrwAmount(holding.marketValueKrw)}</strong><small className={Number(holding.unrealizedPnlKrw) >= 0 ? "positive" : "negative"}>평가손익 {formatKrwAmount(holding.unrealizedPnlKrw)}</small></div>
+                    </button>
+                  ))}
+                </div>
+              ) : <p className="league-empty-copy">아직 보유종목이 없습니다.</p>}
+            </div>
+
+            <div className="league-portfolio-section">
+              <div className="league-section-title"><div><span>RECENT FILLS</span><strong>최근 체결</strong></div></div>
+              {dashboard?.orders.length ? (
+                <div className="league-order-history">
+                  {dashboard.orders.slice(0, 8).map((order) => (
+                    <button type="button" key={order.orderId} onClick={() => onOpenChart(leagueSecurityTicker({ symbol: order.symbol, securityName: order.securityName, market: order.market, nativeCurrency: order.nativeCurrency, nativePrice: order.nativePrice }))} aria-label={`${order.securityName} 차트 보기`}>
+                      <span className={order.side}>{order.side === "buy" ? "매수" : "매도"}</span>
+                      <div><strong>{order.securityName}</strong><small>{order.quantity}주 · {new Date(order.executedAt).toLocaleString("ko-KR")}</small></div>
+                      <em>{formatKrwAmount(order.grossKrw)}</em>
+                    </button>
+                  ))}
+                </div>
+              ) : <p className="league-empty-copy">아직 체결내역이 없습니다.</p>}
+            </div>
+            </>}
+
+            {leagueTab === "ranking" && (
+              <div className="league-ranking-section" role="tabpanel">
+                <div className="league-section-title">
+                  <div><span>LIVE STANDINGS</span><strong>투자 순위</strong></div>
+                  <button type="button" className="league-refresh" disabled={leagueLoading || leagueRefreshRemaining > 0} onClick={() => void refreshRanking()}>{leagueLoading ? "평가 중…" : leagueRefreshRemaining > 0 ? `${leagueRefreshRemaining}초 후 갱신` : "현재 시세로 갱신"}</button>
+                </div>
+                {league?.snapshot && <p className="league-snapshot-time">평가 {new Date(league.snapshot.valuationAt).toLocaleString("ko-KR")} · 가장 오래된 시세 {league.snapshot.oldestQuoteAt ? new Date(league.snapshot.oldestQuoteAt).toLocaleString("ko-KR") : "현금만 보유"}</p>}
+                {leagueLoading && !league ? <div className="league-inline-loading">모든 참가자의 포트폴리오를 평가하는 중…</div> : league?.participants.length ? (
+                  <div className="league-ranking-list">
+                    {league.participants.map((participant) => (
+                      <button type="button" key={participant.profileId} className={participant.isMe ? "me" : ""} onClick={() => loadPlayer(participant.profileId)}>
+                        <span className="league-rank-number">{participant.rank}</span>
+                        <span className="league-rank-player"><strong>{participant.nickname}{participant.isMe ? " · 나" : ""}</strong><small>{participant.badges.join(" · ") || participant.topHoldings.map((holding) => holding.securityName).join(" · ") || "아직 투자 전"}</small></span>
+                        <span className="league-rank-value"><strong>{formatKrwAmount(participant.equityKrw)}</strong><small className={Number(participant.totalReturnPct) >= 0 ? "positive" : "negative"}>{Number(participant.totalReturnPct) >= 0 ? "+" : ""}{Number(participant.totalReturnPct).toFixed(2)}% {participant.rankMovement === null ? "" : participant.rankMovement > 0 ? `▲${participant.rankMovement}` : participant.rankMovement < 0 ? `▼${Math.abs(participant.rankMovement)}` : "—"}</small></span>
+                      </button>
+                    ))}
+                  </div>
+                ) : <p className="league-empty-copy">첫 순위표를 만들려면 현재 시세로 갱신해 주세요.</p>}
+
+                {selectedPlayer && (
+                  <div className="league-player-detail">
+                    <div className="league-player-detail-head"><div><small>#{selectedPlayer.rank}</small><strong>{selectedPlayer.nickname}</strong></div><button type="button" onClick={() => setSelectedPlayer(null)} aria-label="참가자 상세 닫기">×</button></div>
+                    <div className="league-player-detail-metrics"><span>수익률 <b className={Number(selectedPlayer.totalReturnPct) >= 0 ? "positive" : "negative"}>{Number(selectedPlayer.totalReturnPct) >= 0 ? "+" : ""}{Number(selectedPlayer.totalReturnPct).toFixed(2)}%</b></span><span>현금비중 <b>{Number(selectedPlayer.cashRatioPct).toFixed(1)}%</b></span></div>
+                    <div className="league-holdings">
+                      {selectedPlayer.holdings.length ? selectedPlayer.holdings.map((holding) => <button type="button" key={`${holding.market}:${holding.symbol}`} onClick={() => onOpenChart(leagueSecurityTicker({ ...holding, nativePrice: holding.lastNativePrice }))} aria-label={`${holding.securityName} 차트 보기`}><div><strong>{holding.securityName}</strong><small>{holding.symbol} · {holding.market} · {holding.quantity.toLocaleString("ko-KR")}주</small></div><div><strong>{formatKrwAmount(holding.marketValueKrw)}</strong><small className={Number(holding.unrealizedPnlKrw) >= 0 ? "positive" : "negative"}>평가손익 {formatKrwAmount(holding.unrealizedPnlKrw)}</small></div></button>) : <p className="league-empty-copy">보유종목이 없습니다.</p>}
+                    </div>
+                    {selectedPlayer.activityHidden && <p className="league-snapshot-time">이 참가자는 매매 활동 피드를 비공개로 설정했습니다.</p>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {leagueTab === "activity" && (
+              <div className="league-ranking-section" role="tabpanel">
+                <div className="league-section-title"><div><span>LEAGUE TAPE</span><strong>최근 활동</strong></div><button type="button" className="league-refresh" disabled={leagueLoading} onClick={() => void selectLeagueTab("activity")}>{leagueLoading ? "불러오는 중…" : "새로고침"}</button></div>
+                <p className="league-snapshot-time">공개에 동의한 참가자의 체결만 표시합니다.</p>
+                {league?.activity.length ? <div className="league-activity-list">{league.activity.map((activity) => <article key={activity.id}><span className={activity.side}>{activity.side === "buy" ? "매수" : "매도"}</span><div><button type="button" className="league-player-link" onClick={() => loadPlayer(activity.profileId)}>{activity.nickname}</button><button type="button" className="league-stock-link" onClick={() => onOpenChart(leagueSecurityTicker(activity))}>{activity.securityName} <small>차트 →</small></button><small>{activity.market} {activity.symbol} · {activity.quantity.toLocaleString("ko-KR")}주 · {new Date(activity.executedAt).toLocaleString("ko-KR")}</small></div><em>{formatKrwAmount(activity.grossKrw)}</em></article>)}</div> : <p className="league-empty-copy">공개된 매매 활동이 아직 없습니다.</p>}
+              </div>
+            )}
+
+            {leagueTab === "admin" && admin && (
+              <div className="league-admin-section" role="tabpanel">
+                <div className="league-section-title"><div><span>LEAGUE CONTROL</span><strong>시즌 운영</strong></div><em>DB admin 역할 전용</em></div>
+                <div className="league-admin-seasons">
+                  {admin.seasons.map((season) => <article key={season.id}><div><strong>{season.name}</strong><small>{season.slug} · 규칙 v{season.ruleVersion}</small></div><div><span className={season.status}>{season.status}</span><small>{season.participantCount}명</small></div></article>)}
+                </div>
+                <form className="league-admin-form" onSubmit={createAdminSeason}>
+                  <strong>새 시즌 초안</strong>
+                  <label><span>시즌 이름</span><input required minLength={2} maxLength={100} value={adminDraft.name} onChange={(event) => setAdminDraft((current) => ({ ...current, name: event.target.value }))} /></label>
+                  <label><span>slug</span><input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value={adminDraft.slug} onChange={(event) => setAdminDraft((current) => ({ ...current, slug: event.target.value.toLowerCase() }))} /></label>
+                  <label><span>시작 시각</span><input required type="datetime-local" value={adminDraft.startsAt} onChange={(event) => setAdminDraft((current) => ({ ...current, startsAt: event.target.value }))} /></label>
+                  <label><span>종료 시각</span><input required type="datetime-local" value={adminDraft.endsAt} onChange={(event) => setAdminDraft((current) => ({ ...current, endsAt: event.target.value }))} /></label>
+                  <label><span>시작 자금</span><input required inputMode="numeric" value={adminDraft.initialCashKrw} onChange={(event) => setAdminDraft((current) => ({ ...current, initialCashKrw: event.target.value }))} /></label>
+                  <label><span>상태</span><select value={adminDraft.status} onChange={(event) => setAdminDraft((current) => ({ ...current, status: event.target.value }))}><option value="draft">초안</option><option value="open">즉시 공개</option></select></label>
+                  <button type="submit" disabled={submitting}>{submitting ? "저장 중…" : "시즌 만들기"}</button>
+                  <small>시즌 생성은 기존 원장이나 시즌을 초기화하지 않습니다.</small>
+                </form>
+                <div className="league-admin-audit"><strong>최근 감사 기록</strong>{admin.auditEvents.length ? admin.auditEvents.slice(0, 10).map((audit) => <article key={audit.id}><div><span>{audit.action}</span><small>{new Date(audit.createdAt).toLocaleString("ko-KR")}</small></div><code>{audit.requestId}</code></article>) : <p className="league-empty-copy">감사 기록이 없습니다.</p>}</div>
+              </div>
+            )}
+            {error && <p className="league-error" role="alert">{error}</p>}
+            {leagueNotice && <p className="league-notice" role="status">{leagueNotice}</p>}
+            <p className="league-disclaimer">사이버 머니를 사용하는 모의투자입니다. 실제 주문이나 수익을 발생시키지 않습니다.</p>
+          </div>
+        ) : game?.status === "unavailable" ? (
+          <div className="league-unavailable">
+            <strong>지금은 참가 가능한 시즌이 없습니다.</strong>
+            <p>다음 시즌이 열리면 이곳에서 바로 참가할 수 있습니다.</p>
+          </div>
+        ) : (
+          <form className="league-onboarding" onSubmit={enroll}>
+            <div className="league-season-intro">
+              <span>WELCOME BONUS</span>
+              <strong>{game?.season ? formatKrwAmount(game.season.initialCashKrw) : "1억 원"}</strong>
+              <p>닉네임을 정하면 모의투자 포트폴리오와 시작 자금이 한 번만 지급됩니다.</p>
+            </div>
+            <label className="league-nickname-field">
+              <span>리그 닉네임</span>
+              <input
+                value={nickname}
+                onChange={(event) => setNickname(event.target.value)}
+                minLength={2}
+                maxLength={16}
+                autoComplete="off"
+                placeholder="2~16자"
+                required
+              />
+              <small>한글·영문·숫자·공백·밑줄을 사용할 수 있습니다.</small>
+            </label>
+            <label className="league-check-row">
+              <input type="checkbox" checked={acceptedRules} onChange={(event) => setAcceptedRules(event.target.checked)} />
+              <span>사이버 머니 기반 모의투자이며 실제 주문이 아니라는 점에 동의합니다.</span>
+            </label>
+            <label className="league-check-row muted">
+              <input type="checkbox" checked={activityFeedVisible} onChange={(event) => setActivityFeedVisible(event.target.checked)} />
+              <span>내 매매 활동을 리그 피드에 공개</span>
+            </label>
+            {error && <p className="league-error" role="alert">{error}</p>}
+            <button className="league-submit" type="submit" disabled={submitting || !acceptedRules}>
+              {submitting ? "참가 처리 중…" : "1억 받고 리그 참가"}
+            </button>
+          </form>
+        )}
+
+        {error && game?.status === "ready" && !dashboard && <p className="league-error" role="alert">{error}</p>}
+      </section>
+    </div>
+  );
+}
+
 function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [region, setRegion] = useState<Region>("kr");
   const [timeframe, setTimeframe] = useState<ScreeningTimeframe>("weekly");
@@ -588,8 +1225,43 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [chartLoading, setChartLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [logoOpen, setLogoOpen] = useState(false);
+  const [leagueOpen, setLeagueOpen] = useState(false);
+  const [leagueTicker, setLeagueTicker] = useState<Ticker | null>(null);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
+  const [favoriteLists, setFavoriteLists] = useState<FavoriteList[]>([]);
+  const closeLeague = useCallback(() => setLeagueOpen(false), []);
+  const closeFavorites = useCallback(() => setFavoritesOpen(false), []);
+  const chartPanelRef = useRef<HTMLElement>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0, failures: 0 });
   const [message, setMessage] = useState("스캔 전 · 주요 시장 흐름을 확인하세요");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/favorites", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("즐겨찾기를 불러오지 못했습니다.");
+        return response.json() as Promise<{ lists?: FavoriteList[] }>;
+      })
+      .then((payload) => setFavoriteLists(payload.lists ?? []))
+      .catch((loadError) => {
+        if (loadError instanceof Error && loadError.name !== "AbortError") setFavoriteLists([]);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const openSavedSecurityChart = useCallback((nextTicker: Ticker) => {
+    setRegion(nextTicker.currency === "USD" ? "us" : "kr");
+    setDirectTicker(nextTicker);
+    setSelectedKey("");
+    setStockQuery("");
+    setStockMatches([]);
+    setLeagueTicker(null);
+    setLeagueOpen(false);
+    setFavoritesOpen(false);
+    window.requestAnimationFrame(() => {
+      chartPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
 
   useEffect(() => {
     if (!logoOpen) return;
@@ -647,16 +1319,15 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     price: 0,
   };
   const selected = directTicker ?? selectedCandidate ?? marketTicker;
+  const selectedIsFavorite = !isMarketOverview && favoriteLists.some((list) =>
+    list.items.some((item) => item.symbol === selected.code && item.market === selected.market),
+  );
   const selectedSignal = directTicker || isMarketOverview ? undefined : selectedCandidate;
   const activeClassification = classification ?? (selected.sector ? { sector: selected.sector, industry: selected.industry, themes: selected.themes } : null);
 
   useEffect(() => {
     const normalized = stockQuery.trim();
-    if (!normalized) {
-      setStockMatches([]);
-      setStockSearching(false);
-      return;
-    }
+    if (!normalized) return;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
       setStockSearching(true);
@@ -682,6 +1353,8 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
+    // Loading state is deliberately reset when the selected security/timeframe changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setChartLoading(true);
     setChart([]);
     setPriceChanges(EMPTY_PRICE_CHANGES);
@@ -719,6 +1392,8 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
         if (!controller.signal.aborted) setChartLoading(false);
       });
     return () => controller.abort();
+  // `selected` includes a synthetic market object; the stable identifiers above define the fetch boundary.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.code, chartTimeframe, isMarketOverview, activeMarketWatch.id]);
 
   async function runFullScan() {
@@ -926,7 +1601,14 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
               <span className="global-search-icon">⌕</span>
               <input
                 value={stockQuery}
-                onChange={(event) => setStockQuery(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setStockQuery(value);
+                  if (!value.trim()) {
+                    setStockMatches([]);
+                    setStockSearching(false);
+                  }
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     setStockQuery("");
@@ -937,7 +1619,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                 autoComplete="off"
                 placeholder="전체 종목명 또는 코드 검색"
               />
-              {stockSearching && <small>검색 중</small>}
+              {stockQuery.trim() && stockSearching && <small>검색 중</small>}
             </label>
             {stockQuery.trim() && (
               <div className="global-search-results" role="listbox" aria-label="전체 종목 검색 결과">
@@ -946,6 +1628,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                     key={ticker.code}
                     type="button"
                     role="option"
+                    aria-selected={false}
                     onClick={() => {
                       setDirectTicker(ticker);
                       setStockQuery("");
@@ -963,11 +1646,16 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
               </div>
             )}
           </div>
+          <button className="favorites-entry-button" type="button" onClick={() => setFavoritesOpen(true)}><span aria-hidden="true">★</span> 즐겨찾기</button>
           <div className="market-clock">
             <span className="live-dot" />
             <span>실시간 데이터 연결</span>
             <span className="clock-separator">KST</span>
           </div>
+          <button className="league-entry-button" type="button" onClick={() => { setLeagueTicker(null); setLeagueOpen(true); }}>
+            <span>₩</span>
+            <strong>선 넘는 리그</strong>
+          </button>
           <div className="account-menu" title={authUser.email}>
             {authUser.picture ? <img src={authUser.picture} alt="" referrerPolicy="no-referrer" /> : <span>{authUser.name.slice(0, 1)}</span>}
             <div><strong>{authUser.name}</strong><small>{authUser.email}</small></div>
@@ -1216,7 +1904,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
           )}
         </aside>
 
-        <section className="chart-panel">
+        <section ref={chartPanelRef} className="chart-panel">
           {selected ? (
             <>
               <div className="security-header">
@@ -1248,6 +1936,34 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                   <p>
                     {chartTimeframeLabel} · {isMarketOverview ? "시장 흐름" : `MA10 ${isMa10Breakout ? "상향돌파" : detailCurrentRelation10 || "계산 중"} · MA240 ${isMa240Breakout ? "상향돌파" : detailCurrentRelation240 || "계산 중"}`}
                   </p>
+                  {!isMarketOverview && selected.assetType === "STOCK" && (
+                    <div className="security-quick-actions">
+                      <button
+                        className={`favorite-security-button${selectedIsFavorite ? " saved" : ""}`}
+                        type="button"
+                        aria-pressed={selectedIsFavorite}
+                        aria-label={selectedIsFavorite ? `${selected.name} 즐겨찾기 관리, 저장됨` : `${selected.name} 즐겨찾기에 추가`}
+                        onClick={() => setFavoritesOpen(true)}
+                      >
+                        <span aria-hidden="true">{selectedIsFavorite ? "★" : "☆"}</span>
+                        {selectedIsFavorite ? "즐겨찾기됨" : "즐겨찾기"}
+                      </button>
+                      <button
+                        className="simulated-trade-button"
+                        type="button"
+                        onClick={() => {
+                          setLeagueTicker({
+                            ...selected,
+                            price: detailCurrentClose,
+                            exchangeRate: appliedExchangeRate ?? undefined,
+                          });
+                          setLeagueOpen(true);
+                        }}
+                      >
+                        <span>₩</span> 모의투자
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="security-price">
                   <small>현재가</small>
@@ -1367,14 +2083,17 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       </section>
 
       {logoOpen && (
-        <div className="logo-lightbox" role="dialog" aria-modal="true" aria-label="선 넘네 로고" onClick={() => setLogoOpen(false)}>
-          <div className="logo-lightbox-card" onClick={(event) => event.stopPropagation()}>
+        <div className="logo-lightbox" role="dialog" aria-modal="true" aria-label="선 넘네 로고">
+          <div className="logo-lightbox-card">
             <button className="logo-lightbox-close" type="button" onClick={() => setLogoOpen(false)} aria-label="로고 크게 보기 닫기">×</button>
             <img src="/brand-mark.png" alt="선 넘네.. 로고" />
             <a href="mailto:minkyuman@gmail.com">minkyuman@gmail.com</a>
           </div>
         </div>
       )}
+
+      {leagueOpen && <LeagueDialog onClose={closeLeague} onOpenChart={openSavedSecurityChart} ticker={leagueTicker} />}
+      {favoritesOpen && <FavoriteDialog currentTicker={isMarketOverview ? null : { ...selected, price: detailCurrentClose, exchangeRate: appliedExchangeRate ?? undefined }} onClose={closeFavorites} onOpenChart={openSavedSecurityChart} onListsChange={setFavoriteLists} />}
 
       <footer>
         <p>현재 봉은 진행 중이므로 신호와 거래량 비교는 마감 전까지 달라질 수 있습니다.</p>

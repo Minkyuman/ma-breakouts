@@ -1,5 +1,48 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1787918922941,
+      "tag": "0000_flippant_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787919090175,
+      "tag": "0001_fast_mephistopheles",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787921002322,
+      "tag": "0002_reflective_stellaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787921733057,
+      "tag": "0003_quiet_shaman",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787922424191,
+      "tag": "0004_shocking_silver_surfer",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787926172530,
+      "tag": "0005_late_thundra",
+      "breakpoints": true
+    }
+  ]
 }

@@ -28,6 +28,10 @@
 - 종목명 클릭 시 네이버 금융 상세 페이지 열기
 - 미국 종목명 클릭 시 네이버 해외증권 상세 페이지 열기
 - Google 로그인 후에만 대시보드와 시장 데이터 API 이용 가능
+- 계정별 이름 있는 즐겨찾기 목록: 기본 `관심종목`, 목록 생성·이름 변경·삭제, 한·미 종목 추가·삭제, 저장 종목에서 차트 바로 열기
+- 개발 환경에서 `선 넘는 리그` Phase 2 제공: 고유 닉네임 등록, 사이버 머니 1억 원, 한·미 주식 모의 매수·매도, 보유 종목과 체결 내역
+- 개발 환경에서 `선 넘는 리그` Phase 3 제공: 서버 시세 기반 원화 평가, 투자 순위·순위 변동·배지, 참가자 보유종목, 공개 동의형 활동 피드
+- 개발 환경에서 `선 넘는 리그` Phase 4 하드닝 제공: DB 요청 제한, 요청 ID 추적, 관리자 시즌·감사 화면, 접근성·모바일 레이아웃 보완
 - 로고 확대 모달과 이메일 연락 링크
 
 ## 돌파 판정
@@ -66,6 +70,15 @@ npm run dev
 
 브라우저에서 [http://localhost:3000](http://localhost:3000)을 엽니다.
 
+Supabase PostgreSQL을 포함한 리그 기능은 Cloudflare Worker 방식의 기본 개발 서버 대신 Vercel Node 빌드 미리보기를 사용합니다.
+
+```bash
+NITRO_PRESET=vercel npx vercel env run -e development -- npm run build
+npx vercel env run -e development -- npm run preview:vercel
+```
+
+이 방식은 로컬 Google OAuth 설정과 Vercel Development의 `DATABASE_URL`을 함께 사용하며 Production DB에는 연결하지 않습니다.
+
 ## Google 로그인 설정
 
 Google Cloud Console에서 OAuth 동의 화면을 구성하고 `웹 애플리케이션` 유형의 OAuth 클라이언트를 생성합니다. 승인된 리디렉션 URI에는 사용하는 환경에 맞춰 아래 주소를 정확히 등록합니다.
@@ -96,6 +109,31 @@ npm test
 
 `npm test`는 빌드 후 서버 렌더링 테스트를 실행합니다.
 
+## 모의투자 리그 개발 환경
+
+리그 데이터는 기존 Google 로그인의 `sub`를 사용자 식별자로 사용하고 Supabase Postgres에 서버 전용으로 저장합니다. 브라우저에는 DB 키를 전달하지 않으며, 첫 참가 시 사용자·닉네임·포트폴리오·시작 자금 원장을 하나의 직렬화 트랜잭션으로 생성합니다.
+
+```dotenv
+DATABASE_URL=Supabase_Supavisor_transaction_pooler_URL
+DATABASE_SSL=require
+```
+
+개발 프리시즌 생성과 Phase 1·2 동시성 검증은 Vercel Development 환경에서만 아래처럼 실행합니다.
+
+```bash
+ALLOW_DEV_SEED=true npx vercel env run -e development -- npm run db:seed:dev-season
+ALLOW_PHASE1_DB_TEST=true npx vercel env run -e development -- npm run verify:phase1
+ALLOW_PHASE2_DB_TEST=true npx vercel env run -e development -- npm run verify:phase2
+ALLOW_PHASE3_DB_TEST=true npx vercel env run -e development -- npm run verify:phase3
+ALLOW_PHASE4_DB_TEST=true npx vercel env run -e development -- npm run verify:phase4
+```
+
+Phase 2 주문 API는 브라우저의 가격·환율·잔고를 신뢰하지 않고 서버 시세로만 체결합니다. 직렬화 트랜잭션, 행 잠금, 멱등키와 정밀 소수 계산으로 중복 체결·초과 매수·초과 매도를 방지하며 영수증에 적용 시세와 환율 시각을 남깁니다. Production DB를 별도로 만들고 마이그레이션하기 전에는 리그 변경사항을 프로덕션에 배포하지 않습니다.
+
+Phase 3 순위표도 서버가 모든 보유 종목의 시세와 환율을 다시 조회해 하나의 공통 평가 시점으로 만듭니다. 누락되거나 오래된 데이터가 있으면 전체 평가를 중단하며, 순위는 총 평가자산·누적 최대 낙폭·참가 시각 순으로 결정합니다. 다른 참가자에게는 닉네임과 선택적 아바타만 공개하고 이메일은 API 응답에 포함하지 않습니다.
+
+Phase 4는 주문·평가·관리자 변경에 서버리스 공통 DB 요청 제한과 `x-request-id` 추적을 적용합니다. 시즌을 만드는 관리자 작업은 감사 기록과 하나의 트랜잭션으로 저장되며, 로그인 허용 목록과 관리자 역할은 분리됩니다. 운영·백업·장애 대응 절차는 `.codex/notes/paper-trading-runbook.md`에 기록되어 있습니다.
+
 ## 프로젝트 구조
 
 ```text
@@ -103,12 +141,24 @@ app/
   page.tsx                 화면·차트·스크리닝 UI
   globals.css              디자인 시스템과 반응형 스타일
   api/auth/                Google OAuth·세션·로그아웃
+  api/favorites/           계정별 즐겨찾기 목록·종목 관리 API
+  api/game/                리그 온보딩·포트폴리오·모의 주문 API
+  api/admin/game/          DB admin 역할 전용 시즌 생성 API
   api/universe/route.ts    전체 종목 목록
   api/screen/route.ts      배치 스크리닝
   api/chart/route.ts       차트 데이터
   api/search/route.ts      종목 검색
 lib/auth.ts                세션 서명·검증과 인증 공통 처리
+lib/game.ts                시즌 참가·시드 원장 트랜잭션
+lib/game-trading.ts        모의 주문·체결·포지션 트랜잭션
+lib/game-league.ts         포트폴리오 재평가·순위·공개 활동
+lib/game-operations.ts     DB 요청 제한·요청 ID·운영 로그
+lib/game-admin.ts          관리자 역할 검사·시즌 생성
+lib/favorites.ts           즐겨찾기 소유권·목록·종목 관리
 lib/market.ts              시장 데이터, 집계, 이동평균, 돌파 판정
+db/                        Supabase Postgres 연결과 Drizzle 스키마
+drizzle/                   리그 DB 마이그레이션
+scripts/                   개발 시즌 생성·동시성 통합 검증
 public/brand-mark.png      선 넘네.. 브랜드 마크
 tests/                     서버 렌더링 회귀 테스트
 .openai/hosting.json       Sites 호스팅 설정

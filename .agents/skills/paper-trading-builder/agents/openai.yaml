@@ -1,0 +1,8 @@
+interface:
+  display_name: "Paper Trading Builder"
+  short_description: "LINE BREAKER 모의투자 기능을 안전하게 설계·구현합니다"
+  default_prompt: "Use $paper-trading-builder to plan and implement the next LINE BREAKER paper-trading milestone."
+  brand_color: "#17594A"
+
+policy:
+  allow_implicit_invocation: true
