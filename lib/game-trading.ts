@@ -293,7 +293,9 @@ export async function executeTrade(
   if (
     quote.ticker.code !== intent.symbol ||
     quote.ticker.market !== intent.market ||
-    quote.ticker.assetType !== "STOCK" ||
+    (quote.ticker.assetType !== "STOCK" && !(
+      quote.ticker.assetType === "ETF" && (intent.market === "KOSPI" || intent.market === "KOSDAQ")
+    )) ||
     !new Decimal(quote.nativePrice).isPositive() ||
     !new Decimal(quote.fxRate).isPositive() ||
     quoteAgeMs < -36 * 60 * 60 * 1000 ||

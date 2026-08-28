@@ -62,6 +62,12 @@ const MARKET_WATCHES: MarketWatch[] = [
   { id: "vix", name: "VIX 변동성 지수", shortName: "VIX", unit: "pt" },
 ];
 
+function supportsPaperTrading(ticker: Pick<Ticker, "assetType" | "market">) {
+  return ticker.assetType === "STOCK" || (
+    ticker.assetType === "ETF" && (ticker.market === "KOSPI" || ticker.market === "KOSDAQ")
+  );
+}
+
 const number = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 
 function formatPrice(value: number) {
@@ -1043,7 +1049,7 @@ function LeagueDialog({
               <article><span>총 평가자산</span><strong>{formatKrwAmount(dashboard?.portfolio.equityKrw ?? game.portfolio.equityKrw)}</strong></article>
               </div>
 
-            {ticker && ticker.assetType === "STOCK" && (
+            {ticker && supportsPaperTrading(ticker) && (
               <form className="league-trade-ticket" onSubmit={submitTrade}>
                 <div className="league-section-title">
                   <div><span>SIMULATED ORDER</span><strong>{ticker.name} <small>{ticker.code} · {ticker.market}</small></strong></div>
@@ -1971,7 +1977,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                   <p>
                     {chartTimeframeLabel} · {isMarketOverview ? "시장 흐름" : `MA10 ${isMa10Breakout ? "상향돌파" : detailCurrentRelation10 || "계산 중"} · MA240 ${isMa240Breakout ? "상향돌파" : detailCurrentRelation240 || "계산 중"}`}
                   </p>
-                  {!isMarketOverview && selected.assetType === "STOCK" && (
+                  {!isMarketOverview && (
                     <div className="security-quick-actions">
                       <button
                         className={`favorite-security-button${selectedIsFavorite ? " saved" : ""}`}
@@ -1983,7 +1989,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                         <span aria-hidden="true">{selectedIsFavorite ? "★" : "☆"}</span>
                         {selectedIsFavorite ? "즐겨찾기됨" : "즐겨찾기"}
                       </button>
-                      <button
+                      {supportsPaperTrading(selected) && <button
                         className="simulated-trade-button"
                         type="button"
                         onClick={() => {
@@ -1996,7 +2002,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                         }}
                       >
                         <span>₩</span> 모의투자
-                      </button>
+                      </button>}
                     </div>
                   )}
                 </div>

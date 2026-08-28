@@ -17,7 +17,7 @@ import {
 } from "../db/schema";
 import { enrollInActiveSeason } from "../lib/game";
 import { executeTrade, GameTradeError, getPortfolioDashboard } from "../lib/game-trading";
-import type { Market, TradingQuote } from "../lib/market";
+import type { AssetType, Market, TradingQuote } from "../lib/market";
 
 if (process.env.ALLOW_PHASE2_DB_TEST !== "true") {
   throw new Error("DB 통합 검증은 ALLOW_PHASE2_DB_TEST=true일 때만 실행할 수 있습니다.");
@@ -43,13 +43,14 @@ function quote(
   nativePrice: string,
   nativeCurrency: "KRW" | "USD" = "KRW",
   fxRate = "1.00000000",
+  assetType: AssetType = "STOCK",
 ): TradingQuote {
   return {
     ticker: {
       code: symbol,
-      name: symbol === "TESTKR" ? "검증한국" : "검증미국",
+      name: symbol === "TESTKR" ? "검증한국" : symbol === "TESTETF" ? "검증ETF" : "검증미국",
       market,
-      assetType: "STOCK",
+      assetType,
       marketCap: 1,
       price: Number(nativePrice),
       currency: nativeCurrency,
@@ -124,6 +125,22 @@ try {
   assert.equal(usdReceipt.grossKrw, "28700.00");
   assert.equal(usdReceipt.fxRate, "1400.00000000");
 
+  const etfReceipt = await executeTrade(
+    authUser,
+    { symbol: "TESTETF", market: "KOSPI", side: "buy", quantity: 3, clientOrderId: `${suffix}-etf-buy` },
+    async () => quote("TESTETF", "KOSPI", "10000", "KRW", "1.00000000", "ETF"),
+  );
+  assert.equal(etfReceipt.grossKrw, "30000.00");
+  await assert.rejects(
+    executeTrade(
+      authUser,
+      { symbol: "TESTETN", market: "KOSPI", side: "buy", quantity: 1, clientOrderId: `${suffix}-etn-buy` },
+      async () => quote("TESTETN", "KOSPI", "10000", "KRW", "1.00000000", "ETN"),
+    ),
+    (error: unknown) => error instanceof GameTradeError && error.code === "QUOTE_UNAVAILABLE",
+    "ETN은 ETF 허용 범위에 포함되면 안 됩니다.",
+  );
+
   await assert.rejects(
     executeTrade(
       authUser,
@@ -144,14 +161,14 @@ try {
     .select()
     .from(executions)
     .where(and(eq(executions.ruleVersion, 1), eq(executions.orderId, usdReceipt.orderId)));
-  assert.equal(createdOrders.length, 3, "매수·매도·미국 매수 세 건만 저장되어야 합니다.");
+  assert.equal(createdOrders.length, 4, "주식 매수·매도, 미국 주식 매수, ETF 매수 네 건만 저장되어야 합니다.");
   assert.equal(createdExecutions.length, 1);
 
   const dashboard = await getPortfolioDashboard(authUser);
-  assert.equal(dashboard.holdings.length, 1);
-  assert.equal(dashboard.holdings[0].symbol, "TESTUS");
-  assert.equal(dashboard.holdings[0].quantity, 2);
-  assert.equal(dashboard.orders.length, 3);
+  assert.equal(dashboard.holdings.length, 2);
+  assert(dashboard.holdings.some((holding) => holding.symbol === "TESTUS" && holding.quantity === 2));
+  assert(dashboard.holdings.some((holding) => holding.symbol === "TESTETF" && holding.quantity === 3));
+  assert.equal(dashboard.orders.length, 4);
   assert(dashboard.orders.some((order) => order.tradeNote === "#돌파 주봉 저항 확인"));
   assert(!JSON.stringify(dashboard).includes(authUser.email));
 

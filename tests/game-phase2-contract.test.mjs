@@ -21,11 +21,15 @@ test("Phase 2 trusts server quotes and settles atomically with exact decimals", 
   assert.match(trading, /trade_settlement/);
   assert.match(trading, /priceSnapshots/);
   assert.match(trading, /fxSnapshots/);
+  assert.match(trading, /quote\.ticker\.assetType === "ETF"/);
+  assert.match(trading, /intent\.market === "KOSPI"/);
   assert.match(route, /executeTrade\(user/);
   assert.doesNotMatch(trading, /input\.(?:price|fxRate|cash|equity)/);
   assert.match(market, /fetchTradingQuote/);
   assert.match(market, /STALE_QUOTE/);
   assert.match(market, /STALE_FX/);
+  assert.match(market, /한국 주식·ETF와 미국 보통주/);
+  assert.match(page, /supportsPaperTrading\(ticker\)/);
   assert.match(page, /사이버 머니 · 실제 주문 아님/);
   assert.match(page, /화면의 예상 금액과 실제 모의 체결 금액은 다를 수 있습니다/);
   assert.match(page, /시세 시각/);

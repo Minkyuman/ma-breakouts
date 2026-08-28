@@ -29,6 +29,8 @@ test("named favorites are private, bounded, and navigate back to charts", async 
   assert.match(page, /selectedIsFavorite/);
   assert.match(page, /aria-pressed=\{selectedIsFavorite\}/);
   assert.match(page, /즐겨찾기됨/);
+  assert.match(page, /!isMarketOverview && \(/);
+  assert.match(page, /supportsPaperTrading\(selected\)/);
   assert.match(page, /initialLists=\{favoriteLists\}/);
   assert.match(page, /if \(initialLists !== null\)/);
   assert.match(favorites, /getFavoriteListsForAccount\(account\.id\)/);

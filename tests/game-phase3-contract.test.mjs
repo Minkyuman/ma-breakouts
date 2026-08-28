@@ -17,6 +17,8 @@ test("Phase 3 rebuilds a private, timestamped leaderboard from server quotes", a
   assert.match(league, /isolationLevel:\s*"serializable"/);
   assert.match(league, /oldestQuoteAt/);
   assert.match(league, /activityFeedVisible/);
+  assert.match(league, /quote\.ticker\.assetType === "ETF"/);
+  assert.match(league, /market === "KOSPI"/);
   assert.match(league, /previousRank - snapshot\.rank/);
   assert.doesNotMatch(league, /\.email\b|users\.email/);
   assert.match(page, /현재 시세로 갱신/);

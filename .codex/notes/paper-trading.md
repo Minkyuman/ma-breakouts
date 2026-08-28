@@ -25,7 +25,7 @@ Success means:
 | Starting capital | KRW 100,000,000 per participant; configurable per season |
 | Eligible users | Existing Google-login allowlist; account created lazily on first league visit |
 | Durable identity | Google `sub`; email is mutable metadata |
-| Instruments | KR/US common stocks supported by the service; indices, FX, crypto, ETF/ETN excluded initially |
+| Instruments | Korean common stocks and listed ETFs, plus US common stocks supported by the service; indices, FX, crypto, and ETNs excluded |
 | Quantity | Whole shares only |
 | Base currency | KRW |
 | US settlement | USD quote converted with the server-selected USD/KRW FX snapshot; no separate USD wallet in MVP |
@@ -270,6 +270,12 @@ Exit: no P0/P1 defects, production backup verified, season reset tested, and sim
 - Personal receipts and recent fills always show the owner’s note. League activity and participant recent trades expose it only through the existing `activity_feed_visible` gate; private identity fields remain excluded.
 - The order UI includes quick thesis tags, a character counter, confirmation preview, and an explicit notice that notes cannot be edited after execution. Public activity carries the disclaimer that notes are personal opinions, not investment recommendations.
 - `drizzle/0006_milky_meteorite.sql` adds only the nullable `orders.trade_note` column and was applied and verified on Development and Production with `orders` RLS still enabled. Development integration verification covers note persistence, exact replay, and different-note idempotency conflict.
+
+## 18. Korean ETF eligibility record
+
+- 2026-08-29: Korean listed ETFs are eligible for favorites and simulated whole-share buy/sell orders. ETNs remain favorites-only and cannot be traded in the league; US eligibility remains common stocks for the current provider rollout.
+- ETF orders use the same server-selected quote, decimal KRW settlement, serializable transaction, idempotency, immutable execution/ledger, position projection, and freshness rules as stock orders.
+- League revaluation accepts ETF quotes so an ETF holding cannot block leaderboard refresh. Development verification covers ETF execution, holdings projection, ledger reconciliation, and explicit ETN rejection; a live provider check resolved KODEX 200 as a positive KRW ETF quote.
 
 ## 11. Out of scope for the first release
 

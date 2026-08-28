@@ -47,7 +47,7 @@ function auth(label: string): AuthUser {
 
 function quote(symbol: string, market: Market, nativePrice: string, currency: "KRW" | "USD" = "KRW", fxRate = "1"): TradingQuote {
   return {
-    ticker: { code: symbol, name: symbol === "RANKA" ? "랭크한국" : "Rank US", market, assetType: "STOCK", marketCap: 1, price: Number(nativePrice), currency },
+    ticker: { code: symbol, name: symbol === "RANKA" ? "랭크ETF" : "Rank US", market, assetType: symbol === "RANKA" ? "ETF" : "STOCK", marketCap: 1, price: Number(nativePrice), currency },
     nativePrice,
     nativeCurrency: currency,
     quoteSource: `${sourcePrefix}-price`,
@@ -129,7 +129,7 @@ try {
     assert.equal(cashFromLedger.toFixed(2), snapshot.cashKrw);
   }
 
-  console.log("Phase 3 검증 완료: 한·미 포트폴리오 평가, 순위 이동, 원장 정합성, 활동 비공개와 이메일 차단이 확인되었습니다.");
+  console.log("Phase 3 검증 완료: 국내 ETF·미국 주식 평가, 순위 이동, 원장 정합성, 활동 비공개와 이메일 차단이 확인되었습니다.");
 } finally {
   if (!createdUserIds.length) {
     const accountRows = await database.select({ id: users.id }).from(users).where(inArray(users.googleSub, [playerA.sub, playerB.sub, playerC.sub]));
