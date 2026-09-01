@@ -47,6 +47,8 @@ test("baseline league migration enforces identity, seed, and ledger invariants",
     "audit_events",
     "favorite_lists",
     "favorite_list_items",
+    "analysis_settings",
+    "access_requests",
   ]) {
     assert.match(migration, new RegExp(`CREATE TABLE "${table}"`));
   }
@@ -65,6 +67,8 @@ test("baseline league migration enforces identity, seed, and ledger invariants",
   assert.match(migration, /leaderboard_snapshots_drawdown_valid/);
   assert.match(migration, /rate_limit_buckets_actor_action_window_unique/);
   assert.match(migration, /audit_events_actor_created_idx/);
+  assert.match(migration, /access_requests_google_sub_unique/);
+  assert.match(migration, /access_requests_email_unique/);
   assert.match(migration, /initial_cash_krw.+100000000\.00/s);
   for (const table of [
     "users",
@@ -82,6 +86,8 @@ test("baseline league migration enforces identity, seed, and ledger invariants",
     "audit_events",
     "favorite_lists",
     "favorite_list_items",
+    "analysis_settings",
+    "access_requests",
   ]) {
     assert.match(
       migration,

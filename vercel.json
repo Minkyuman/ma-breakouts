@@ -1,6 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "NITRO_PRESET=vercel npm run build",
+  "buildCommand": "if [ \"$RUN_DB_MIGRATIONS\" = \"true\" ]; then npm run db:migrate && npm run db:verify-research; fi; NITRO_PRESET=vercel npm run build",
   "outputDirectory": ".output",
-  "regions": ["icn1"]
+  "regions": ["icn1"],
+  "crons": [
+    {
+      "path": "/api/internal/search-index/refresh",
+      "schedule": "0 20 * * *"
+    }
+  ]
 }

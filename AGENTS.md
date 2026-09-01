@@ -2,6 +2,8 @@
 
 ## Start here
 
+- When resuming after a new session, read `docs/agent-notes/project-state.md`, then inspect `git status --short` and the relevant diff before editing. The snapshot is an aid, not a substitute for code and configuration.
+- Read `docs/agent-notes/self-check.md` before validation or deployment work, and `docs/agent-notes/workflows.md` for repeated application, database, or release procedures.
 - Read `.codex/notes/paper-trading.md` before changing the paper-trading feature.
 - Use `.agents/skills/paper-trading-builder/SKILL.md` for planning, schema, order execution, portfolio, leaderboard, or season work.
 - Preserve the existing Korean/US screener and Google-login gate unless the task explicitly changes them.

@@ -19,7 +19,7 @@ async function render(path = "/", init = undefined) {
 }
 
 test("rejects unauthenticated market-data API requests", async () => {
-  for (const path of ["/api/chart?code=005930&market=KOSPI", "/api/search?query=삼성", "/api/universe", "/api/game/me", "/api/favorites"]) {
+  for (const path of ["/api/chart?code=005930&market=KOSPI", "/api/search?query=삼성", "/api/universe", "/api/game/me", "/api/favorites", "/api/game/research-notes"]) {
     const response = await render(path);
     assert.equal(response.status, 401);
     assert.deepEqual(await response.json(), { error: "로그인이 필요합니다." });
@@ -40,6 +40,10 @@ test("rejects unauthenticated market-data API requests", async () => {
   });
   assert.equal(adminSeason.status, 401);
   assert.deepEqual(await adminSeason.json(), { error: "로그인이 필요합니다." });
+
+  const adminAccess = await render("/api/admin/access-requests");
+  assert.equal(adminAccess.status, 401);
+  assert.deepEqual(await adminAccess.json(), { error: "로그인이 필요합니다." });
 
   for (const path of ["/api/game/portfolio", "/api/game/orders", "/api/game/leaderboard", "/api/game/activity", "/api/game/players/test-profile"]) {
     const response = await render(path);
@@ -104,11 +108,15 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(page, /\/api\/game\/players\//);
   assert.match(page, /투자 순위/);
   assert.match(page, /최근 활동/);
+  assert.match(page, /\/api\/game\/research-notes/);
+  assert.match(page, /LEAGUE RESEARCH/);
   assert.match(page, /MY WATCHLISTS/);
   assert.match(page, /새 목록 이름/);
   assert.match(page, /현재 종목 추가/);
   assert.match(page, /\/api\/favorites/);
   assert.match(page, /시즌 운영/);
+  assert.match(page, /서비스 접근 요청/);
+  assert.match(page, /접근 승인 대기 중/);
   assert.match(page, /시즌 생성은 기존 원장이나 시즌을 초기화하지 않습니다/);
   assert.match(page, /ctx\.lineWidth = 0\.8/);
   assert.match(page, /MA 5/);
@@ -148,19 +156,29 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(page, /전월/);
   assert.match(page, /latestPrices/);
   assert.match(page, /global-stock-search/);
-  assert.match(page, /전체 종목명 또는 코드 검색/);
+  assert.match(page, /종목명·코드·초성 검색/);
   assert.match(page, /\/api\/search\?query=/);
   assert.match(page, /m\.stock\.naver\.com\/worldstock\/stock/);
   assert.match(page, /m\.stock\.naver\.com\/domestic\/stock/);
   assert.match(page, /naverStockPageUrl/);
   assert.match(page, /ScreeningTimeframe/);
   assert.match(page, /runFullScan/);
+  assert.match(page, /manualSelectionDuringScanRef/);
+  assert.match(page, /!manualSelectionDuringScanRef\.current/);
   assert.match(page, /MARKET PULSE/);
   assert.match(page, /MARKET_WATCHES/);
+  assert.match(page, /대만 가권지수/);
+  assert.match(page, /중국 CSI 300/);
+  assert.match(page, /항셍테크 ETF 추적/);
+  assert.match(page, /나스닥 100 선물/);
+  assert.match(page, /미국 10년물 국채금리/);
   assert.match(page, /const openMarketOverview = useCallback/);
   assert.match(page, /setDirectTicker\(null\)/);
   assert.match(page, /onClick=\{\(\) => openMarketOverview\(watch\.id\)\}/);
   assert.match(page, /\/api\/market-chart/);
+  assert.match(page, /Hydrate their metadata so the/);
+  assert.match(page, /시가총액 \$\{formatCap\(analysis\.security\.marketCap\)\}/);
+  assert.match(page, /selectedPlayer\.cashKrw.*selectedPlayer\.equityKrw/s);
   assert.doesNotMatch(page, /useState<Candidate\[\]>\(INITIAL_RESULTS\)/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
@@ -180,16 +198,21 @@ test("ships product metadata and removes the disposable preview", async () => {
   await access(new URL("../app/api/game/orders/route.ts", import.meta.url));
   await access(new URL("../app/api/game/leaderboard/route.ts", import.meta.url));
   await access(new URL("../app/api/game/activity/route.ts", import.meta.url));
+  await access(new URL("../app/api/game/research-notes/route.ts", import.meta.url));
   await access(new URL("../app/api/game/players/[profileId]/route.ts", import.meta.url));
   await access(new URL("../app/api/admin/game/seasons/route.ts", import.meta.url));
+  await access(new URL("../app/api/admin/access-requests/route.ts", import.meta.url));
+  await access(new URL("../app/api/admin/analysis/model/route.ts", import.meta.url));
   await access(new URL("../app/api/favorites/route.ts", import.meta.url));
   await access(new URL("../lib/favorites.ts", import.meta.url));
   await access(new URL("../lib/game.ts", import.meta.url));
   await access(new URL("../lib/game-trading.ts", import.meta.url));
   await access(new URL("../lib/game-league.ts", import.meta.url));
+  await access(new URL("../lib/game-research.ts", import.meta.url));
   await access(new URL("../lib/game-operations.ts", import.meta.url));
   await access(new URL("../lib/game-admin.ts", import.meta.url));
   await access(new URL("../lib/auth.ts", import.meta.url));
+  await access(new URL("../lib/access.ts", import.meta.url));
   await access(new URL("../public/favicon.ico", import.meta.url));
   await access(new URL("../public/favicon-32.png", import.meta.url));
   await access(new URL("../public/site.webmanifest", import.meta.url));

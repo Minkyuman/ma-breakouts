@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     const classified = await Promise.allSettled(matches.map(async (item) => ({
       code: item.code,
       classification: await fetchSecurityClassification(item),
-      isNasdaq100: item.currency === "USD" ? await fetchNasdaq100Membership(item.code) : undefined,
+      isNasdaq100: item.currency === "USD" && item.assetType === "STOCK" ? await fetchNasdaq100Membership(item.code) : undefined,
     })));
     const classificationByCode = new Map(classified.flatMap((result) => result.status === "fulfilled" ? [[result.value.code, result.value] as const] : []));
     matches = matches.map((item) => {

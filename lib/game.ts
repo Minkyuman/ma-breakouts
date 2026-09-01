@@ -8,7 +8,7 @@ import {
   seasons,
   users,
 } from "@/db/schema";
-import type { AuthUser } from "@/lib/auth";
+import { isGameAdminEmail, type AuthUser } from "@/lib/auth";
 
 const SEED_IDEMPOTENCY_KEY = "season-seed:v1";
 const SERIALIZABLE_RETRY_LIMIT = 3;
@@ -152,7 +152,9 @@ export async function getGameOverview(authUser: AuthUser): Promise<GameOverview>
     .from(users)
     .where(eq(users.googleSub, authUser.sub))
     .limit(1);
-  if (!account) return publicOverview(season, undefined, undefined);
+  // A configured operator may manage access before joining a trading season.
+  // Do not fabricate a profile or portfolio, but surface the admin entry.
+  if (!account) return publicOverview(season, undefined, undefined, isGameAdminEmail(authUser.email));
 
   const [[profile], [portfolio]] = await Promise.all([
     database
@@ -172,7 +174,7 @@ export async function getGameOverview(authUser: AuthUser): Promise<GameOverview>
       .limit(1),
   ]);
 
-  return publicOverview(season, profile, portfolio, account.role === "admin");
+  return publicOverview(season, profile, portfolio, account.role === "admin" || isGameAdminEmail(authUser.email));
 }
 
 export async function enrollInActiveSeason(
@@ -295,7 +297,7 @@ export async function enrollInActiveSeason(
               target: [cashLedger.portfolioId, cashLedger.idempotencyKey],
             });
 
-          return publicOverview(season, profile, portfolio, account.role === "admin");
+          return publicOverview(season, profile, portfolio, account.role === "admin" || isGameAdminEmail(authUser.email));
         },
         { isolationLevel: "serializable", accessMode: "read write" },
       );

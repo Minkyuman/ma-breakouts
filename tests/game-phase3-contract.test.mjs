@@ -20,6 +20,8 @@ test("Phase 3 rebuilds a private, timestamped leaderboard from server quotes", a
   assert.match(league, /quote\.ticker\.assetType === "ETF"/);
   assert.match(league, /market === "KOSPI"/);
   assert.match(league, /previousRank - snapshot\.rank/);
+  assert.match(league, /cash\.div\(equity\)\.times\(100\)/);
+  assert.match(league, /rather than a snapshot cash ratio mixed with post-trade position rows/);
   assert.doesNotMatch(league, /\.email\b|users\.email/);
   assert.match(page, /현재 시세로 갱신/);
   assert.match(page, /공개에 동의한 참가자의 체결만 표시/);
@@ -30,6 +32,7 @@ test("Phase 3 rebuilds a private, timestamped leaderboard from server quotes", a
   assert.match(page, /selectLeagueTab\("activity"\)/);
   assert.match(page, /function leagueSecurityTicker/);
   assert.match(page, /onOpenChart\(leagueSecurityTicker/);
+  assert.match(page, /selectedPlayer\.cashKrw.*selectedPlayer\.equityKrw/s);
   assert.match(page, /openSavedSecurityChart/);
   assert.match(page, /scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
 });

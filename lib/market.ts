@@ -1,7 +1,11 @@
+import { sql } from "drizzle-orm";
+import { getDb } from "@/db";
+import { marketSearchIndex } from "@/db/schema";
+
 export type Region = "kr" | "us";
-export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | "NYSE" | "AMEX";
+export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | "NYSE" | "AMEX" | "US_ETF" | "GLOBAL";
 export type MarketFilter = "all" | "kospi" | "kosdaq" | "nasdaq" | "nyse" | "amex";
-export type AssetType = "STOCK" | "ETF" | "ETN";
+export type AssetType = "STOCK" | "ETF" | "ETN" | "INDEX";
 export type AssetFilter = "all" | "stock" | "etp";
 export type Timeframe = "weekly" | "monthly";
 export type ChartTimeframe = "daily" | Timeframe;
@@ -185,6 +189,41 @@ type NasdaqRow = {
   marketCap?: string;
 };
 
+// This is deliberately curated instead of scanning every listed ETF.  The screener
+// is most useful where the underlying product has durable liquidity and broad
+// investor recognition; thin, short-lived and single-stock products add noise.
+// Leveraged and inverse ETFs are included when they are widely traded. ETNs are
+// intentionally excluded because the current Nasdaq data path does not provide a
+// dependable ETN universe and historical-data contract.
+const US_MAJOR_ETFS: ReadonlyArray<Pick<Ticker, "code" | "name">> = [
+  ["SPY", "SPDR S&P 500 ETF Trust"], ["VOO", "Vanguard S&P 500 ETF"], ["IVV", "iShares Core S&P 500 ETF"], ["SPLG", "SPDR Portfolio S&P 500 ETF"], ["VTI", "Vanguard Total Stock Market ETF"], ["ITOT", "iShares Core S&P Total U.S. Stock Market ETF"],
+  ["QQQ", "Invesco QQQ Trust"], ["QQQM", "Invesco NASDAQ 100 ETF"], ["DIA", "SPDR Dow Jones Industrial Average ETF Trust"], ["IWM", "iShares Russell 2000 ETF"], ["IJR", "iShares Core S&P Small-Cap ETF"], ["MDY", "SPDR S&P MidCap 400 ETF Trust"],
+  ["SCHD", "Schwab U.S. Dividend Equity ETF"], ["VYM", "Vanguard High Dividend Yield ETF"], ["DGRO", "iShares Core Dividend Growth ETF"], ["HDV", "iShares Core High Dividend ETF"], ["JEPI", "JPMorgan Equity Premium Income ETF"], ["JEPQ", "JPMorgan Nasdaq Equity Premium Income ETF"], ["DIVO", "Amplify CWP Enhanced Dividend Income ETF"], ["XYLD", "Global X S&P 500 Covered Call ETF"], ["QYLD", "Global X Nasdaq 100 Covered Call ETF"],
+  ["XLK", "Technology Select Sector SPDR Fund"], ["XLF", "Financial Select Sector SPDR Fund"], ["XLE", "Energy Select Sector SPDR Fund"], ["XLV", "Health Care Select Sector SPDR Fund"], ["XLY", "Consumer Discretionary Select Sector SPDR Fund"], ["XLI", "Industrial Select Sector SPDR Fund"], ["XLP", "Consumer Staples Select Sector SPDR Fund"], ["XLU", "Utilities Select Sector SPDR Fund"], ["XLB", "Materials Select Sector SPDR Fund"], ["XLRE", "Real Estate Select Sector SPDR Fund"], ["XLC", "Communication Services Select Sector SPDR Fund"],
+  ["SMH", "VanEck Semiconductor ETF"], ["SOXX", "iShares Semiconductor ETF"], ["SOXL", "Direxion Daily Semiconductor Bull 3X Shares"], ["SOXS", "Direxion Daily Semiconductor Bear 3X Shares"], ["BOTZ", "Global X Robotics & Artificial Intelligence ETF"], ["ARKK", "ARK Innovation ETF"], ["AIQ", "Global X Artificial Intelligence & Technology ETF"], ["CIBR", "First Trust Nasdaq Cybersecurity ETF"], ["HACK", "Amplify Cybersecurity ETF"], ["ITA", "iShares U.S. Aerospace & Defense ETF"], ["XAR", "SPDR S&P Aerospace & Defense ETF"],
+  ["TLT", "iShares 20+ Year Treasury Bond ETF"], ["IEF", "iShares 7-10 Year Treasury Bond ETF"], ["SHY", "iShares 1-3 Year Treasury Bond ETF"], ["BND", "Vanguard Total Bond Market ETF"], ["AGG", "iShares Core U.S. Aggregate Bond ETF"], ["LQD", "iShares iBoxx $ Investment Grade Corporate Bond ETF"], ["HYG", "iShares iBoxx $ High Yield Corporate Bond ETF"], ["TIP", "iShares TIPS Bond ETF"], ["SGOV", "iShares 0-3 Month Treasury Bond ETF"], ["BIL", "SPDR Bloomberg 1-3 Month T-Bill ETF"],
+  ["GLD", "SPDR Gold Shares"], ["IAU", "iShares Gold Trust"], ["SLV", "iShares Silver Trust"], ["USO", "United States Oil Fund"], ["UNG", "United States Natural Gas Fund"], ["DBC", "Invesco DB Commodity Index Tracking Fund"],
+  ["EFA", "iShares MSCI EAFE ETF"], ["VEA", "Vanguard FTSE Developed Markets ETF"], ["VWO", "Vanguard FTSE Emerging Markets ETF"], ["EEM", "iShares MSCI Emerging Markets ETF"], ["EWY", "iShares MSCI South Korea ETF"], ["KWEB", "KraneShares CSI China Internet ETF"], ["FXI", "iShares China Large-Cap ETF"], ["INDA", "iShares MSCI India ETF"],
+  ["TQQQ", "ProShares UltraPro QQQ"], ["SQQQ", "ProShares UltraPro Short QQQ"], ["QLD", "ProShares Ultra QQQ"], ["QID", "ProShares UltraShort QQQ"], ["UPRO", "ProShares UltraPro S&P500"], ["SPXU", "ProShares UltraPro Short S&P500"], ["SSO", "ProShares Ultra S&P500"], ["SDS", "ProShares UltraShort S&P500"], ["TECL", "Direxion Daily Technology Bull 3X Shares"], ["TECS", "Direxion Daily Technology Bear 3X Shares"], ["FAS", "Direxion Daily Financial Bull 3X Shares"], ["FAZ", "Direxion Daily Financial Bear 3X Shares"],
+  ["IBIT", "iShares Bitcoin Trust ETF"], ["FBTC", "Fidelity Wise Origin Bitcoin Fund"], ["ETHA", "iShares Ethereum Trust ETF"], ["BITB", "Bitwise Bitcoin ETF"],
+].map(([code, name]) => ({ code, name }));
+
+async function fetchUsMajorEtfs(): Promise<Ticker[]> {
+  return US_MAJOR_ETFS.map((definition) => ({
+      code: definition.code,
+      name: definition.name,
+      // The curated universe spans Nasdaq, NYSE Arca and Cboe listings. Keep this
+      // as a product-market label rather than incorrectly presenting one venue.
+      market: "US_ETF" as const,
+      assetType: "ETF" as const,
+      marketCap: 0,
+      // The screening and chart paths obtain the latest close from the historical
+      // endpoint. A list quote is intentionally not trusted as scan input.
+      price: 0,
+      currency: "USD" as const,
+    }));
+}
+
 function usdNumber(value: unknown): number {
   return numeric(String(value ?? "").replace(/[$]/g, ""));
 }
@@ -220,7 +259,11 @@ async function fetchUsExchange(exchange: "nasdaq" | "nyse" | "amex", limit = 100
  * compatible with a future scheduled full-market batch.
  */
 export async function fetchUsUniverse(filter: MarketFilter, assetFilter: AssetFilter = "stock"): Promise<Ticker[]> {
-  if (assetFilter === "etp") return [];
+  if (assetFilter === "etp") return fetchUsMajorEtfs();
+  if (assetFilter === "all") {
+    const [stocks, etfs] = await Promise.all([fetchUsUniverse(filter, "stock"), fetchUsMajorEtfs()]);
+    return [...stocks, ...etfs];
+  }
   const exchanges: Array<"nasdaq" | "nyse" | "amex"> =
     filter === "all" ? ["nasdaq", "nyse", "amex"] : [filter as "nasdaq" | "nyse" | "amex"];
   const groups = await Promise.all(exchanges.map((exchange) => fetchUsExchange(exchange)));
@@ -256,8 +299,20 @@ export async function fetchUsdKrwSnapshot() {
   };
 }
 
+let usdKrwRateCache: { expiresAt: number; rate: number } | null = null;
+let usdKrwRateRequest: Promise<number> | null = null;
+
 export async function fetchUsdKrwRate(): Promise<number> {
-  return (await fetchUsdKrwSnapshot()).rate;
+  if (usdKrwRateCache && usdKrwRateCache.expiresAt > Date.now()) return usdKrwRateCache.rate;
+  if (!usdKrwRateRequest) {
+    usdKrwRateRequest = fetchUsdKrwSnapshot()
+      .then((snapshot) => {
+        usdKrwRateCache = { rate: snapshot.rate, expiresAt: Date.now() + 5 * 60_000 };
+        return snapshot.rate;
+      })
+      .finally(() => { usdKrwRateRequest = null; });
+  }
+  return usdKrwRateRequest;
 }
 
 /** Nasdaq's quote metadata includes the current NDX constituent flag. */
@@ -295,7 +350,11 @@ function inferThemes(...parts: Array<string | undefined>): string[] {
   return rules.filter(([, pattern]) => pattern.test(source)).map(([theme]) => theme).slice(0, 3);
 }
 
+const koreanClassificationCache = new Map<string, { expiresAt: number; classification: SecurityClassification }>();
+
 async function fetchKoreanClassification(code: string, name: string): Promise<SecurityClassification> {
+  const cached = koreanClassificationCache.get(code);
+  if (cached && cached.expiresAt > Date.now()) return cached.classification;
   const response = await fetch(`https://finance.naver.com/item/main.naver?code=${encodeURIComponent(code)}`, {
     headers: NAVER_HEADERS,
     cache: "no-store",
@@ -305,20 +364,33 @@ async function fetchKoreanClassification(code: string, name: string): Promise<Se
   const sector = html.match(/업종명\s*:\s*<a[^>]*>([^<]+)<\/a>/)?.[1]?.trim();
   const overviewHtml = html.match(/<div id="summary_info"[\s\S]*?<div class="txt_notice">/)?.[0] ?? "";
   const overview = overviewHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  return { sector, themes: inferThemes(name, sector, overview) };
+  const classification = { sector, themes: inferThemes(name, sector, overview) };
+  if (koreanClassificationCache.size >= 500) koreanClassificationCache.delete(koreanClassificationCache.keys().next().value!);
+  koreanClassificationCache.set(code, { classification, expiresAt: Date.now() + 6 * 60 * 60_000 });
+  return classification;
 }
 
+const usClassificationCache = new Map<string, { expiresAt: number; classification: SecurityClassification }>();
+
 async function fetchUsClassification(code: string, name: string): Promise<SecurityClassification> {
+  const cached = usClassificationCache.get(code);
+  if (cached && cached.expiresAt > Date.now()) return cached.classification;
   const payload = await fetchUsJson<{
     data?: { Sector?: { value?: string }; Industry?: { value?: string }; CompanyDescription?: { value?: string } };
   }>(`https://api.nasdaq.com/api/company/${encodeURIComponent(code.toLowerCase())}/company-profile`);
   const sector = payload.data?.Sector?.value?.trim();
   const industry = payload.data?.Industry?.value?.trim();
   const description = payload.data?.CompanyDescription?.value;
-  return { sector, industry, themes: inferThemes(name, sector, industry, description) };
+  const classification = { sector, industry, themes: inferThemes(name, sector, industry, description) };
+  if (usClassificationCache.size >= 500) usClassificationCache.delete(usClassificationCache.keys().next().value!);
+  usClassificationCache.set(code, { classification, expiresAt: Date.now() + 6 * 60 * 60_000 });
+  return classification;
 }
 
-export async function fetchSecurityClassification(ticker: Pick<Ticker, "code" | "name" | "market">): Promise<SecurityClassification> {
+export async function fetchSecurityClassification(ticker: Pick<Ticker, "code" | "name" | "market" | "assetType">): Promise<SecurityClassification> {
+  if (ticker.assetType === "ETF" && ticker.market === "US_ETF") {
+    return { sector: "ETF", themes: inferThemes(ticker.name) };
+  }
   return ticker.market === "KOSPI" || ticker.market === "KOSDAQ"
     ? fetchKoreanClassification(ticker.code, ticker.name)
     : fetchUsClassification(ticker.code, ticker.name);
@@ -326,13 +398,53 @@ export async function fetchSecurityClassification(ticker: Pick<Ticker, "code" | 
 
 let searchUniverseCache: { expiresAt: number; tickers: Ticker[] } | null = null;
 let searchUniverseRequest: Promise<Ticker[]> | null = null;
+let searchIndexRefreshRequest: Promise<{ count: number; refreshedAt: Date }> | null = null;
+let searchIndexStorageRequest: Promise<void> | null = null;
+
+/**
+ * Called only by the authenticated internal cron endpoint. It repairs a
+ * historical production database where the migration journal existed but the
+ * search-index table did not, without exposing DDL to browser requests.
+ */
+export async function ensureSearchIndexStorage() {
+  if (searchIndexStorageRequest) return searchIndexStorageRequest;
+  searchIndexStorageRequest = (async () => {
+    const database = getDb();
+    await database.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "market_search_index" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "code" varchar(16) NOT NULL,
+        "normalized_name" varchar(160) NOT NULL,
+        "initial_consonants" varchar(160),
+        "security_name" varchar(160) NOT NULL,
+        "market" varchar(16) NOT NULL,
+        "asset_type" varchar(8) NOT NULL,
+        "market_cap" double precision DEFAULT 0 NOT NULL,
+        "price" double precision DEFAULT 0 NOT NULL,
+        "currency" varchar(3),
+        "source_updated_at" timestamp with time zone NOT NULL,
+        "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+        CONSTRAINT "market_search_index_code_nonempty" CHECK (length(trim("code")) > 0),
+        CONSTRAINT "market_search_index_name_nonempty" CHECK (length(trim("security_name")) > 0)
+      )
+    `));
+    await database.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS "market_search_index_market_code_unique" ON "market_search_index" ("market", "code")`));
+    await database.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "market_search_index_name_idx" ON "market_search_index" ("normalized_name")`));
+    await database.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "market_search_index_initials_idx" ON "market_search_index" ("initial_consonants")`));
+    await database.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "market_search_index_source_updated_idx" ON "market_search_index" ("source_updated_at")`));
+  })().catch((error) => {
+    searchIndexStorageRequest = null;
+    throw error;
+  });
+  return searchIndexStorageRequest;
+}
 
 async function getSearchUniverse(): Promise<Ticker[]> {
   if (searchUniverseCache && searchUniverseCache.expiresAt > Date.now()) {
     return searchUniverseCache.tickers;
   }
   if (!searchUniverseRequest) {
-    searchUniverseRequest = Promise.all([fetchUniverse("all", "all"), fetchUsUniverse("all", "stock")])
+    searchUniverseRequest = Promise.all([fetchUniverse("all", "all"), fetchUsUniverse("all", "all")])
       .then(([kr, us]) => [...kr, ...us])
       .then((tickers) => {
         searchUniverseCache = { expiresAt: Date.now() + 5 * 60_000, tickers };
@@ -345,26 +457,151 @@ async function getSearchUniverse(): Promise<Ticker[]> {
   return searchUniverseRequest;
 }
 
-export async function searchUniverse(query: string, limit = 8): Promise<Ticker[]> {
-  const normalized = query.trim().toLowerCase().replaceAll(" ", "");
-  if (!normalized) return [];
-  const tickers = await getSearchUniverse();
+function normalizedSearchText(value: string) {
+  return value.trim().toLowerCase().replaceAll(" ", "");
+}
+
+const HANGUL_SYLLABLE_START = 0xac00;
+const HANGUL_SYLLABLE_END = 0xd7a3;
+const HANGUL_INITIAL_CONSONANTS = ["ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
+
+function koreanInitialConsonants(value: string) {
+  return Array.from(value).map((character) => {
+    const codePoint = character.charCodeAt(0);
+    if (codePoint < HANGUL_SYLLABLE_START || codePoint > HANGUL_SYLLABLE_END) return character.toLowerCase();
+    return HANGUL_INITIAL_CONSONANTS[Math.floor((codePoint - HANGUL_SYLLABLE_START) / 588)];
+  }).join("");
+}
+
+function isKoreanInitialQuery(value: string) {
+  return /^[ㄱ-ㅎ]+$/u.test(value);
+}
+
+function rankSearchResults(tickers: Ticker[], normalized: string, limit: number) {
+  const initialQuery = isKoreanInitialQuery(normalized);
   const rank = (ticker: Ticker) => {
     const code = ticker.code.toLowerCase();
-    const name = ticker.name.toLowerCase().replaceAll(" ", "");
+    const name = normalizedSearchText(ticker.name);
+    const initials = koreanInitialConsonants(ticker.name);
     if (code === normalized || name === normalized) return 0;
+    if (initialQuery && initials === normalized) return 0;
     if (code.startsWith(normalized)) return 1;
+    if (initialQuery && initials.startsWith(normalized)) return 1;
     if (name.startsWith(normalized)) return 2;
     return 3;
   };
   return tickers
     .filter((ticker) => {
       const code = ticker.code.toLowerCase();
-      const name = ticker.name.toLowerCase().replaceAll(" ", "");
-      return code.includes(normalized) || name.includes(normalized);
+      const name = normalizedSearchText(ticker.name);
+      return code.includes(normalized) || name.includes(normalized)
+        || (initialQuery && koreanInitialConsonants(ticker.name).includes(normalized));
     })
     .sort((a, b) => rank(a) - rank(b) || b.marketCap - a.marketCap || a.code.localeCompare(b.code))
     .slice(0, Math.max(1, Math.min(limit, 20)));
+}
+
+async function searchIndexedUniverse(normalized: string): Promise<Ticker[] | null> {
+  try {
+    const database = getDb();
+    const initialQuery = isKoreanInitialQuery(normalized);
+    const rows = await database
+      .select()
+      .from(marketSearchIndex)
+      .where(initialQuery
+        ? sql`position(${normalized} in coalesce(${marketSearchIndex.initialConsonants}, '')) > 0`
+        : sql`position(${normalized} in lower(${marketSearchIndex.code})) > 0 or position(${normalized} in ${marketSearchIndex.normalizedName}) > 0`)
+      .limit(100);
+    if (rows.length) {
+      return rows.map((row) => ({
+        code: row.code,
+        name: row.securityName,
+        market: row.market as Market,
+        assetType: row.assetType as AssetType,
+        marketCap: row.marketCap,
+        price: row.price,
+        currency: row.currency === "KRW" || row.currency === "USD" ? row.currency : undefined,
+      }));
+    }
+    const [existing] = await database
+      .select({ code: marketSearchIndex.code })
+      .from(marketSearchIndex)
+      .where(initialQuery ? sql`${marketSearchIndex.initialConsonants} is not null` : undefined)
+      .limit(1);
+    return existing ? [] : null;
+  } catch {
+    // The index is optional until its first migration and refresh complete. Keep
+    // search available through the existing provider path during that window.
+    return null;
+  }
+}
+
+export async function refreshSearchIndex(): Promise<{ count: number; refreshedAt: Date }> {
+  if (searchIndexRefreshRequest) return searchIndexRefreshRequest;
+  searchIndexRefreshRequest = (async () => {
+    const tickers = await getSearchUniverse();
+    // Provider universes can overlap (for example, an instrument present in
+    // two category feeds). PostgreSQL rejects an UPSERT batch that attempts to
+    // update the same (market, code) row twice, so keep one canonical record.
+    const uniqueTickers = [...new Map(
+      tickers.map((ticker) => [`${ticker.market}:${ticker.code.toUpperCase()}`, ticker]),
+    ).values()];
+    const refreshedAt = new Date();
+    const database = getDb();
+    const batchSize = 500;
+    for (let offset = 0; offset < uniqueTickers.length; offset += batchSize) {
+      const batch = uniqueTickers.slice(offset, offset + batchSize).map((ticker) => ({
+        code: ticker.code.toUpperCase(),
+        normalizedName: normalizedSearchText(ticker.name),
+        initialConsonants: koreanInitialConsonants(ticker.name),
+        securityName: ticker.name,
+        market: ticker.market,
+        assetType: ticker.assetType,
+        marketCap: ticker.marketCap,
+        price: ticker.price,
+        currency: ticker.currency,
+        sourceUpdatedAt: refreshedAt,
+        updatedAt: refreshedAt,
+      }));
+      await database.insert(marketSearchIndex).values(batch).onConflictDoUpdate({
+        target: [marketSearchIndex.market, marketSearchIndex.code],
+        set: {
+          normalizedName: sql`excluded.normalized_name`,
+          initialConsonants: sql`excluded.initial_consonants`,
+          securityName: sql`excluded.security_name`,
+          assetType: sql`excluded.asset_type`,
+          marketCap: sql`excluded.market_cap`,
+          price: sql`excluded.price`,
+          currency: sql`excluded.currency`,
+          sourceUpdatedAt: sql`excluded.source_updated_at`,
+          updatedAt: refreshedAt,
+        },
+      });
+    }
+    return { count: uniqueTickers.length, refreshedAt };
+  })().finally(() => {
+    searchIndexRefreshRequest = null;
+  });
+  return searchIndexRefreshRequest;
+}
+
+export async function searchUniverse(query: string, limit = 8): Promise<Ticker[]> {
+  const normalized = normalizedSearchText(query);
+  if (!normalized) return [];
+  const indexed = await searchIndexedUniverse(normalized);
+  if (indexed) return rankSearchResults(indexed, normalized, limit);
+
+  // A newly migrated environment has no rows until the first scheduled refresh.
+  // Use the current request as a one-time bootstrap so users do not have to wait
+  // for tomorrow's cron run; subsequent searches use the database index.
+  const liveTickers = await getSearchUniverse();
+  try {
+    await refreshSearchIndex();
+  } catch {
+    // Provider search remains available even if index persistence is temporarily
+    // unavailable, and the next scheduled refresh will retry it.
+  }
+  return rankSearchResults(liveTickers, normalized, limit);
 }
 
 export function historyYears(timeframe: Timeframe, maPeriod: number): number {
@@ -379,7 +616,11 @@ function compactDate(date: Date): string {
   return `${year}${month}${day}`;
 }
 
-export async function fetchDailyChart(code: string, years: number): Promise<DailyRow[]> {
+const KOREAN_CHART_CACHE_MS = 5 * 60_000;
+const koreanChartCache = new Map<string, { expiresAt: number; rows: DailyRow[] }>();
+const koreanChartRequests = new Map<string, Promise<DailyRow[]>>();
+
+async function fetchDailyChartUncached(code: string, years: number): Promise<DailyRow[]> {
   const end = new Date();
   const start = new Date(end);
   start.setFullYear(start.getFullYear() - years);
@@ -390,14 +631,37 @@ export async function fetchDailyChart(code: string, years: number): Promise<Dail
   return Array.isArray(payload) ? (payload as DailyRow[]) : [];
 }
 
-export async function fetchUsDailyChart(code: string, years: number): Promise<DailyRow[]> {
+export async function fetchDailyChart(code: string, years: number, useCache = true): Promise<DailyRow[]> {
+  if (!useCache) return fetchDailyChartUncached(code, years);
+  const normalizedCode = code.trim().toUpperCase();
+  const key = `${normalizedCode}:${years}`;
+  const cached = koreanChartCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.rows;
+  const pending = koreanChartRequests.get(key);
+  if (pending) return pending;
+  const request = fetchDailyChartUncached(normalizedCode, years)
+    .then((rows) => {
+      if (koreanChartCache.size >= 60) koreanChartCache.delete(koreanChartCache.keys().next().value!);
+      koreanChartCache.set(key, { rows, expiresAt: Date.now() + KOREAN_CHART_CACHE_MS });
+      return rows;
+    })
+    .finally(() => { koreanChartRequests.delete(key); });
+  koreanChartRequests.set(key, request);
+  return request;
+}
+
+const US_CHART_CACHE_MS = 5 * 60_000;
+const usChartCache = new Map<string, { expiresAt: number; rows: DailyRow[] }>();
+const usChartRequests = new Map<string, Promise<DailyRow[]>>();
+
+async function fetchUsDailyChartUncached(code: string, years: number, assetType: AssetType): Promise<DailyRow[]> {
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setFullYear(startDate.getFullYear() - years);
   const toDate = (date: Date) => date.toISOString().slice(0, 10);
   type HistoricalRow = { date?: string; open?: string; high?: string; low?: string; close?: string; volume?: string };
   const payload = await fetchUsJson<{ data?: { tradesTable?: { rows?: HistoricalRow[] } } }>(
-    `https://api.nasdaq.com/api/quote/${encodeURIComponent(code.toLowerCase())}/historical?assetclass=stocks&fromdate=${toDate(startDate)}&todate=${toDate(endDate)}&limit=5000`,
+    `https://api.nasdaq.com/api/quote/${encodeURIComponent(code.toLowerCase())}/historical?assetclass=${assetType === "ETF" ? "etf" : "stocks"}&fromdate=${toDate(startDate)}&todate=${toDate(endDate)}&limit=5000`,
   );
   const rows = payload.data?.tradesTable?.rows ?? [];
   return rows.map((row) => {
@@ -414,10 +678,29 @@ export async function fetchUsDailyChart(code: string, years: number): Promise<Da
   });
 }
 
-export async function fetchTickerDailyChart(ticker: Pick<Ticker, "code" | "market">, years: number): Promise<DailyRow[]> {
+export async function fetchUsDailyChart(code: string, years: number, assetType: AssetType = "STOCK", useCache = true): Promise<DailyRow[]> {
+  if (!useCache) return fetchUsDailyChartUncached(code, years, assetType);
+  const normalizedCode = code.trim().toUpperCase();
+  const key = `${assetType}:${normalizedCode}:${years}`;
+  const cached = usChartCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.rows;
+  const pending = usChartRequests.get(key);
+  if (pending) return pending;
+  const request = fetchUsDailyChartUncached(normalizedCode, years, assetType)
+    .then((rows) => {
+      if (usChartCache.size >= 60) usChartCache.delete(usChartCache.keys().next().value!);
+      usChartCache.set(key, { rows, expiresAt: Date.now() + US_CHART_CACHE_MS });
+      return rows;
+    })
+    .finally(() => { usChartRequests.delete(key); });
+  usChartRequests.set(key, request);
+  return request;
+}
+
+export async function fetchTickerDailyChart(ticker: Pick<Ticker, "code" | "market" | "assetType">, years: number, useCache = true): Promise<DailyRow[]> {
   return ticker.market === "KOSPI" || ticker.market === "KOSDAQ"
-    ? fetchDailyChart(ticker.code, years)
-    : fetchUsDailyChart(ticker.code, years);
+    ? fetchDailyChart(ticker.code, years, useCache)
+    : fetchUsDailyChart(ticker.code, years, ticker.assetType, useCache);
 }
 
 function quoteDate(date: string) {
@@ -448,7 +731,7 @@ export async function fetchTradingQuote(
     );
   }
 
-  const rows = await fetchTickerDailyChart(ticker, 1);
+  const rows = await fetchTickerDailyChart(ticker, 1, false);
   const latest = aggregateCandles(rows, "daily").at(-1);
   const quotedAt = latest ? quoteDate(latest.date) : null;
   if (!latest || latest.close <= 0 || !quotedAt) {
@@ -593,6 +876,7 @@ export function screenCandles(
 
   return {
     ...ticker,
+    price: current.close,
     timeframe,
     maPeriod,
     date: current.date,

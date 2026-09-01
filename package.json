@@ -13,7 +13,8 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "drizzle-kit migrate && npm run db:verify-research",
+    "db:verify-research": "tsx scripts/verify-research-table.ts",
     "db:check": "drizzle-kit check",
     "db:studio": "drizzle-kit studio",
     "db:seed:dev-season": "tsx scripts/seed-development-season.ts",
@@ -24,11 +25,15 @@
     "verify:phase4": "tsx scripts/verify-phase4.ts"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "decimal.js": "^10.6.0",
     "drizzle-orm": "0.45.2",
+    "fflate": "^0.7.4",
     "postgres": "^3.4.9",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",

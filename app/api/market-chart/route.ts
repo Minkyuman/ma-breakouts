@@ -8,7 +8,7 @@ type MarketWatch = {
   shortName: string;
   provider: "naver-index" | "yahoo";
   symbol: string;
-  unit: "pt" | "원";
+  unit: "pt" | "원" | "%" | "USD";
 };
 
 export const MARKET_WATCHES: MarketWatch[] = [
@@ -20,8 +20,17 @@ export const MARKET_WATCHES: MarketWatch[] = [
   { id: "dow", name: "다우존스", shortName: "DOW", provider: "yahoo", symbol: "^DJI", unit: "pt" },
   { id: "russell", name: "러셀 2000", shortName: "RUSSELL 2000", provider: "yahoo", symbol: "^RUT", unit: "pt" },
   { id: "sox", name: "필라델피아 반도체", shortName: "SOX", provider: "yahoo", symbol: "^SOX", unit: "pt" },
+  { id: "taiex", name: "대만 가권지수", shortName: "TAIEX", provider: "yahoo", symbol: "^TWII", unit: "pt" },
+  { id: "csi300", name: "중국 CSI 300", shortName: "CSI 300", provider: "yahoo", symbol: "000300.SS", unit: "pt" },
+  { id: "hangsengtech", name: "항셍테크 ETF 추적", shortName: "HSTECH ETF", provider: "yahoo", symbol: "3032.HK", unit: "pt" },
+  { id: "nikkei", name: "일본 닛케이 225", shortName: "NIKKEI 225", provider: "yahoo", symbol: "^N225", unit: "pt" },
+  { id: "nasdaqfutures", name: "나스닥 100 선물", shortName: "NASDAQ FUT", provider: "yahoo", symbol: "NQ=F", unit: "pt" },
+  { id: "sp500futures", name: "S&P 500 선물", shortName: "S&P FUT", provider: "yahoo", symbol: "ES=F", unit: "pt" },
   { id: "usdkrw", name: "달러 / 원", shortName: "USD/KRW", provider: "yahoo", symbol: "KRW=X", unit: "원" },
   { id: "vix", name: "VIX 변동성 지수", shortName: "VIX", provider: "yahoo", symbol: "^VIX", unit: "pt" },
+  { id: "dxy", name: "달러 인덱스", shortName: "DXY", provider: "yahoo", symbol: "DX-Y.NYB", unit: "pt" },
+  { id: "ust10y", name: "미국 10년물 국채금리", shortName: "US 10Y", provider: "yahoo", symbol: "^TNX", unit: "%" },
+  { id: "wti", name: "WTI 유가", shortName: "WTI", provider: "yahoo", symbol: "CL=F", unit: "USD" },
 ];
 
 function value(input: unknown): number {

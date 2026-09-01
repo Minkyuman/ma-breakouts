@@ -1,0 +1,2 @@
+ALTER TABLE "market_search_index" ADD COLUMN "initial_consonants" varchar(160);--> statement-breakpoint
+CREATE INDEX "market_search_index_initials_idx" ON "market_search_index" USING btree ("initial_consonants");

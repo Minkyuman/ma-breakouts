@@ -7,7 +7,7 @@ import type { AssetType, Market } from "@/lib/market";
 
 const MAX_LISTS = 20;
 const MAX_ITEMS_PER_LIST = 200;
-const VALID_MARKETS = new Set<Market>(["KOSPI", "KOSDAQ", "NASDAQ", "NYSE", "AMEX"]);
+const VALID_MARKETS = new Set<Market>(["KOSPI", "KOSDAQ", "NASDAQ", "NYSE", "AMEX", "US_ETF"]);
 const VALID_ASSET_TYPES = new Set<AssetType>(["STOCK", "ETF", "ETN"]);
 
 export type FavoriteItem = {

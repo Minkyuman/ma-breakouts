@@ -14,7 +14,7 @@
 - 주봉·월봉 AND 조건과 MA10·MA240 AND 조건
 - KOSPI·KOSDAQ 시장 필터
 - 미국 시장 전환 및 NASDAQ·NYSE·AMEX 필터
-- 미국은 거래소별 시가총액 상위 1,000개 보통주를 우선 스캔하며 ETF·ETN·우선주·워런트 등은 제외
+- 미국은 거래소별 시가총액 상위 1,000개 보통주와 별도로, 유동성·대표성을 기준으로 선별한 주요 ETF를 스캔. ETN·우선주·워런트 등은 제외
 - 주식·ETF·ETN 유형 필터
 - 시가총액순 정렬, 종목명·코드 검색
 - 전봉 대비 거래량 증감과 현재가의 전일·전주·전월 등락률
@@ -27,6 +27,7 @@
 - 차트 좌우 드래그 이동과 표시 범위 조절
 - 종목명 클릭 시 네이버 금융 상세 페이지 열기
 - 미국 종목명 클릭 시 네이버 해외증권 상세 페이지 열기
+- 로그인 사용자를 위한 OpenRouter 기반 AI 종목 심층분석: 사업 실체·거시환경·기술·펀더멘털·재료·대응전략 7개 섹션, 진입가·목표가·손절가와 시나리오 제공
 - Google 로그인 후에만 대시보드와 시장 데이터 API 이용 가능
 - 계정별 이름 있는 즐겨찾기 목록: 기본 `관심종목`, 목록 생성·이름 변경·삭제, 한·미 종목 추가·삭제, 저장 종목에서 차트 바로 열기
 - `선 넘는 리그` Phase 2 제공: 고유 닉네임 등록, 사이버 머니 1억 원, 국내 주식·ETF와 미국 주식 모의 매수·매도, 보유 종목과 체결 내역
@@ -50,7 +51,7 @@ AND 조건은 동일 종목의 동일 기준 봉에서 모든 조건을 만족�
 - 종목 목록: 네이버 모바일 주식 시장가치 API
 - 가격·거래량: 네이버 국내 종목 일봉 API
 - 일봉 데이터를 주봉·월봉으로 집계한 뒤 이동평균을 계산
-- 미국 종목 목록·일봉 가격·거래량: Nasdaq 공개 API
+- 미국 보통주 및 주요 ETF 목록·일봉 가격·거래량: Nasdaq 공개 API. ETF는 전체 상장 종목을 무차별 스캔하지 않고 관리형 주요 ETF 유니버스를 사용
 - NASDAQ 100 여부: Nasdaq 종목 메타데이터의 구성종목 플래그
 - 섹터: 네이버 금융 동종업종 정보(한국), Nasdaq 기업 프로필(미국)
 - 테마: 기업 개요·산업 설명의 규칙 기반 키워드 분류. 투자 판단을 위한 공식 분류가 아님
@@ -69,6 +70,16 @@ npm run dev
 ```
 
 브라우저에서 [http://localhost:3000](http://localhost:3000)을 엽니다.
+
+AI 심층분석은 OpenRouter API를 서버에서만 호출합니다. `.env.local`에 키와 모델을 설정하며 키는 브라우저 번들이나 API 응답에 포함하지 않습니다. 기본 모델은 `qwen/qwen3.8-flash`이고, 웹 검색 사용량은 OpenRouter에서 별도 비용이 발생할 수 있습니다.
+
+```dotenv
+OPENROUTER_API_KEY=OpenRouter에서_발급한_키
+OPENROUTER_ANALYSIS_MODEL=qwen/qwen3.8-flash
+OPENROUTER_ANALYSIS_MODEL_SUGGESTIONS=qwen/qwen3.8-flash,qwen/qwen3.8-27b
+```
+
+DB `admin` 역할은 `선 넘는 리그 → 운영`에서 심층분석 모델을 바꿀 수 있습니다. 모델 변경은 전역 적용되고 감사 기록에 남으며, OpenRouter의 `provider/model` 표기와 구조화 출력·웹 검색 호환 모델만 사용해야 합니다. API 키는 이 화면에서 변경할 수 없습니다. 초기 운영자는 `GAME_ADMIN_EMAILS`에 쉼표로 지정합니다. 이 목록은 로그인 허용 목록과 별개이며, 해당 사용자가 리그를 열면 자신의 DB 계정만 `admin`으로 승격됩니다.
 
 Supabase PostgreSQL을 포함한 리그 기능은 Cloudflare Worker 방식의 기본 개발 서버 대신 Vercel Node 빌드 미리보기를 사용합니다.
 
@@ -98,7 +109,7 @@ AUTH_BASE_URL=http://localhost:3000
 AUTH_ALLOWED_EMAILS=minkyuman@gmail.com
 ```
 
-운영 환경에서는 같은 변수의 Vercel Production 환경값을 등록하되 `AUTH_BASE_URL`을 `https://stock-chart-screener-web.vercel.app`으로 설정합니다. `AUTH_ALLOWED_EMAILS`는 선택 사항이며, 비워 두면 검증된 모든 Google 계정을 허용하고 쉼표로 이메일을 지정하면 해당 계정만 허용합니다. 비밀값은 저장소에 커밋하지 않습니다. 구현은 Google OpenID Connect의 `openid email profile` 범위를 사용하며 로그인 세션은 서명된 HttpOnly 쿠키로 7일간 유지됩니다.
+운영 환경에서는 같은 변수의 Vercel Production 환경값을 등록하되 `AUTH_BASE_URL`을 `https://stock-chart-screener-web.vercel.app`으로 설정합니다. `AUTH_ALLOWED_EMAILS`는 선택 사항이며, 비워 두면 검증된 모든 Google 계정을 허용하고 쉼표로 이메일을 지정하면 해당 계정만 허용합니다. `GAME_ADMIN_EMAILS`는 운영 콘솔 접근용 이메일 목록으로, `AUTH_ALLOWED_EMAILS`와 분리해 최소 인원만 설정합니다. 비밀값은 저장소에 커밋하지 않습니다. 구현은 Google OpenID Connect의 `openid email profile` 범위를 사용하며 로그인 세션은 서명된 HttpOnly 쿠키로 7일간 유지됩니다.
 
 ## 검증 명령
 
@@ -147,6 +158,7 @@ app/
   api/universe/route.ts    전체 종목 목록
   api/screen/route.ts      배치 스크리닝
   api/chart/route.ts       차트 데이터
+  api/analysis/route.ts    로그인 전용 AI 심층분석 API
   api/search/route.ts      종목 검색
 lib/auth.ts                세션 서명·검증과 인증 공통 처리
 lib/game.ts                시즌 참가·시드 원장 트랜잭션
@@ -156,6 +168,7 @@ lib/game-operations.ts     DB 요청 제한·요청 ID·운영 로그
 lib/game-admin.ts          관리자 역할 검사·시즌 생성
 lib/favorites.ts           즐겨찾기 소유권·목록·종목 관리
 lib/market.ts              시장 데이터, 집계, 이동평균, 돌파 판정
+lib/stock-analysis.ts      서버 가격 팩·OpenRouter 호출·분석 검증과 캐시
 db/                        Supabase Postgres 연결과 Drizzle 스키마
 drizzle/                   리그 DB 마이그레이션
 scripts/                   개발 시즌 생성·동시성 통합 검증
@@ -178,7 +191,7 @@ npx vercel --prod
 
 현재 프로덕션은 Vercel CLI로 배포되어 있습니다. GitHub 푸시마다 자동 배포하려면 Vercel 대시보드에서 GitHub Login Connection을 추가한 뒤 이 저장소를 Vercel 프로젝트에 연결하고, 사용할 프로덕션 브랜치를 지정하면 됩니다.
 
-Google 로그인을 활성화한 배포 전에는 Vercel 프로젝트의 Production 환경변수에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET`, `AUTH_BASE_URL`을 먼저 등록해야 합니다. 개인 전용 서비스라면 `AUTH_ALLOWED_EMAILS`도 함께 등록합니다.
+Google 로그인을 활성화한 배포 전에는 Vercel 프로젝트의 Production 환경변수에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET`, `AUTH_BASE_URL`을 먼저 등록해야 합니다. 개인 전용 서비스라면 `AUTH_ALLOWED_EMAILS`도 함께 등록합니다. AI 심층분석을 쓰려면 서버 전용 `OPENROUTER_API_KEY`와 기본 `OPENROUTER_ANALYSIS_MODEL`도 등록합니다. DB 스키마 변경 배포 시에는 일회성으로 `RUN_DB_MIGRATIONS=true`를 설정해 빌드 단계에서 Drizzle 마이그레이션을 적용한 뒤 다시 해제합니다.
 
 ## 라이선스·투자 주의
 

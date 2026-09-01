@@ -539,6 +539,22 @@ export async function getPublicPlayerDetail(authUser: AuthUser, profileId: strin
     .from(positions)
     .where(and(eq(positions.portfolioId, target.portfolio.id), gt(positions.quantity, 0)))
     .orderBy(desc(positions.marketValueKrw));
+  // A player can trade after the latest ranking snapshot is written. The detail
+  // panel therefore uses one internally consistent stored portfolio valuation,
+  // rather than a snapshot cash ratio mixed with post-trade position rows.
+  const cash = new Decimal(target.portfolio.cashKrw);
+  const marketValue = holdingRows.reduce(
+    (total, holding) => total.plus(new Decimal(holding.marketValueKrw)),
+    new Decimal(0),
+  );
+  const equity = cash.plus(marketValue).toDecimalPlaces(2);
+  const initialCash = new Decimal(requester.season.initialCashKrw);
+  const cashRatioPct = equity.isZero()
+    ? new Decimal(0)
+    : cash.div(equity).times(100).toDecimalPlaces(6);
+  const totalReturnPct = initialCash.isZero()
+    ? new Decimal(0)
+    : equity.minus(initialCash).div(initialCash).times(100).toDecimalPlaces(6);
   const activity = target.profile.activityFeedVisible
     ? (await leagueActivity(requester.season.id, 100)).filter((row) => row.profileId === profileId).slice(0, 10)
     : [];
@@ -547,10 +563,10 @@ export async function getPublicPlayerDetail(authUser: AuthUser, profileId: strin
     nickname: participant.nickname,
     avatarUrl: target.user.avatarUrl,
     rank: participant.rank,
-    equityKrw: participant.equityKrw,
-    cashKrw: participant.cashKrw,
-    totalReturnPct: participant.totalReturnPct,
-    cashRatioPct: participant.cashRatioPct,
+    equityKrw: equity.toFixed(2),
+    cashKrw: cash.toFixed(2),
+    totalReturnPct: totalReturnPct.toFixed(6),
+    cashRatioPct: cashRatioPct.toFixed(6),
     badges: participant.badges,
     holdings: holdingRows.map((holding) => ({
       symbol: holding.symbol,

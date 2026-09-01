@@ -2,7 +2,8 @@ import { desc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { auditEvents, portfolios, seasons, users } from "@/db/schema";
-import type { AuthUser } from "@/lib/auth";
+import { analysisModelSuggestions, getConfiguredAnalysisModel } from "@/lib/analysis-model-settings";
+import { isGameAdminEmail, type AuthUser } from "@/lib/auth";
 
 export class GameAdminError extends Error {
   constructor(
@@ -14,16 +15,47 @@ export class GameAdminError extends Error {
   }
 }
 
-async function adminAccount(authUser: AuthUser) {
-  const [account] = await getDb()
+export async function requireAdminAccount(authUser: AuthUser) {
+  const database = getDb();
+  let [account] = await database
     .select({ id: users.id, role: users.role })
     .from(users)
     .where(eq(users.googleSub, authUser.sub))
     .limit(1);
-  if (!account || account.role !== "admin") {
+  if (!account && isGameAdminEmail(authUser.email)) {
+    [account] = await database
+      .insert(users)
+      .values({
+        googleSub: authUser.sub,
+        email: authUser.email.trim().toLowerCase(),
+        displayName: authUser.name,
+        avatarUrl: authUser.picture,
+        role: "admin",
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: users.googleSub,
+        set: { email: authUser.email.trim().toLowerCase(), displayName: authUser.name, avatarUrl: authUser.picture, role: "admin", updatedAt: new Date() },
+      })
+      .returning({ id: users.id, role: users.role });
+  }
+  if (!account) {
     throw new GameAdminError("FORBIDDEN", "리그 관리자만 접근할 수 있습니다.");
   }
-  return account;
+  if (account.role === "admin") return account;
+
+  if (!isGameAdminEmail(authUser.email)) {
+    throw new GameAdminError("FORBIDDEN", "리그 관리자만 접근할 수 있습니다.");
+  }
+
+  // The configured bootstrap administrator is promoted only for their own
+  // already-authenticated account; regular authorization remains DB-role based.
+  const [promoted] = await database
+    .update(users)
+    .set({ role: "admin", updatedAt: new Date() })
+    .where(eq(users.id, account.id))
+    .returning({ id: users.id, role: users.role });
+  return promoted ?? { ...account, role: "admin" as const };
 }
 
 function databaseErrorCode(error: unknown): string | undefined {
@@ -64,7 +96,7 @@ export async function createSeasonAsAdmin(
   requestId: string,
 ) {
   const database = getDb();
-  const account = await adminAccount(authUser);
+  const account = await requireAdminAccount(authUser);
 
   const name = typeof input.name === "string" ? input.name.normalize("NFKC").trim() : "";
   const slug = typeof input.slug === "string" ? input.slug.trim().toLowerCase() : "";
@@ -147,11 +179,11 @@ export async function createSeasonAsAdmin(
 }
 
 export async function getAdminGameOverview(authUser: AuthUser) {
-  await adminAccount(authUser);
+  await requireAdminAccount(authUser);
   const database = getDb();
   const seasonRows = await database.select().from(seasons).orderBy(desc(seasons.startsAt)).limit(12);
   const seasonIds = seasonRows.map((season) => season.id);
-  const [portfolioRows, eventRows] = await Promise.all([
+  const [portfolioRows, eventRows, selectedModel] = await Promise.all([
     seasonIds.length
       ? database.select({ seasonId: portfolios.seasonId }).from(portfolios).where(inArray(portfolios.seasonId, seasonIds))
       : [],
@@ -168,10 +200,15 @@ export async function getAdminGameOverview(authUser: AuthUser) {
       .from(auditEvents)
       .orderBy(desc(auditEvents.createdAt))
       .limit(30),
+    getConfiguredAnalysisModel(),
   ]);
   const participantCounts = new Map<string, number>();
   for (const row of portfolioRows) participantCounts.set(row.seasonId, (participantCounts.get(row.seasonId) ?? 0) + 1);
   return {
+    analysisModel: {
+      selectedModel,
+      suggestions: analysisModelSuggestions(),
+    },
     seasons: seasonRows.map((season) => ({
       id: season.id,
       slug: season.slug,

@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -29,6 +31,7 @@ export const ledgerEntryType = pgEnum("ledger_entry_type", [
 ]);
 export const orderSide = pgEnum("order_side", ["buy", "sell"]);
 export const orderStatus = pgEnum("order_status", ["filled"]);
+export const accessRequestStatus = pgEnum("access_request_status", ["pending", "approved", "rejected"]);
 
 export const users = pgTable(
   "users",
@@ -50,6 +53,31 @@ export const users = pgTable(
     uniqueIndex("users_google_sub_unique").on(table.googleSub),
     index("users_email_idx").on(table.email),
   ]
+).enableRLS();
+
+/**
+ * Google sign-in is open to requests, while product access is explicitly
+ * granted by an operator. Keep this separate from `users`: a requester does
+ * not become a league participant merely by asking for access.
+ */
+export const accessRequests = pgTable(
+  "access_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    googleSub: text("google_sub").notNull(),
+    email: text("email").notNull(),
+    displayName: text("display_name"),
+    status: accessRequestStatus("status").notNull().default("pending"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("access_requests_google_sub_unique").on(table.googleSub),
+    uniqueIndex("access_requests_email_unique").on(table.email),
+    index("access_requests_status_requested_idx").on(table.status, table.requestedAt),
+  ],
 ).enableRLS();
 
 export const gameProfiles = pgTable(
@@ -121,6 +149,50 @@ export const favoriteListItems = pgTable(
     uniqueIndex("favorite_list_items_security_unique").on(table.listId, table.symbol, table.market),
     index("favorite_list_items_list_sort_idx").on(table.listId, table.sortOrder, table.createdAt),
     check("favorite_list_items_sort_nonnegative", sql`${table.sortOrder} >= 0`),
+  ],
+).enableRLS();
+
+export const analysisSettings = pgTable(
+  "analysis_settings",
+  {
+    key: varchar("key", { length: 40 }).primaryKey(),
+    selectedModel: varchar("selected_model", { length: 160 }).notNull(),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("analysis_settings_model_nonempty", sql`length(trim(${table.selectedModel})) > 0`),
+  ],
+).enableRLS();
+
+/**
+ * Compact provider-independent search index. Market quotes and chart history
+ * continue to use their respective real-time provider paths.
+ */
+export const marketSearchIndex = pgTable(
+  "market_search_index",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: varchar("code", { length: 16 }).notNull(),
+    normalizedName: varchar("normalized_name", { length: 160 }).notNull(),
+    initialConsonants: varchar("initial_consonants", { length: 160 }),
+    securityName: varchar("security_name", { length: 160 }).notNull(),
+    market: varchar("market", { length: 16 }).notNull(),
+    assetType: varchar("asset_type", { length: 8 }).notNull(),
+    marketCap: doublePrecision("market_cap").notNull().default(0),
+    price: doublePrecision("price").notNull().default(0),
+    currency: varchar("currency", { length: 3 }),
+    sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("market_search_index_market_code_unique").on(table.market, table.code),
+    index("market_search_index_name_idx").on(table.normalizedName),
+    index("market_search_index_initials_idx").on(table.initialConsonants),
+    index("market_search_index_source_updated_idx").on(table.sourceUpdatedAt),
+    check("market_search_index_code_nonempty", sql`length(trim(${table.code})) > 0`),
+    check("market_search_index_name_nonempty", sql`length(trim(${table.securityName})) > 0`),
   ],
 ).enableRLS();
 
@@ -460,6 +532,41 @@ export const leaderboardSnapshots = pgTable(
     check("leaderboard_snapshots_market_value_nonnegative", sql`${table.marketValueKrw} >= 0`),
     check("leaderboard_snapshots_cash_ratio_valid", sql`${table.cashRatioPct} >= 0 AND ${table.cashRatioPct} <= 100`),
     check("leaderboard_snapshots_drawdown_valid", sql`${table.maxDrawdownPct} >= 0 AND ${table.maxDrawdownPct} <= 100`),
+  ],
+).enableRLS();
+
+export const leagueResearchPicks = pgTable(
+  "league_research_picks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seasonId: uuid("season_id")
+      .notNull()
+      .references(() => seasons.id, { onDelete: "restrict" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    symbol: varchar("symbol", { length: 16 }).notNull(),
+    securityName: varchar("security_name", { length: 160 }).notNull(),
+    market: varchar("market", { length: 16 }).notNull(),
+    assetType: varchar("asset_type", { length: 8 }).notNull(),
+    researchNote: text("research_note"),
+    chartImageUrl: varchar("chart_image_url", { length: 2048 }),
+    analysisDate: date("analysis_date").notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("league_research_picks_season_updated_idx").on(table.seasonId, table.updatedAt),
+    index("league_research_picks_season_security_date_idx").on(
+      table.seasonId,
+      table.symbol,
+      table.market,
+      table.analysisDate,
+    ),
+    index("league_research_picks_owner_updated_idx").on(table.userId, table.updatedAt),
+    check("league_research_picks_symbol_nonempty", sql`length(trim(${table.symbol})) > 0`),
+    check("league_research_picks_name_nonempty", sql`length(trim(${table.securityName})) > 0`),
+    check("league_research_picks_note_length", sql`${table.researchNote} is null OR char_length(${table.researchNote}) <= 10000`),
   ],
 ).enableRLS();
 

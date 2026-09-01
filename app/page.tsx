@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { AuthUser } from "@/lib/auth";
 import type { FavoriteList } from "@/lib/favorites";
 import type { GameOverview } from "@/lib/game";
 import type { LeagueOverview, PublicPlayerDetail } from "@/lib/game-league";
+import type { LeagueResearchNote, ResearchNotesPage } from "@/lib/game-research";
 import type { PortfolioDashboard, TradeReceipt, TradeSide } from "@/lib/game-trading";
+import type { StockDeepAnalysis } from "@/lib/stock-analysis";
 import type {
   AssetFilter,
   Candidate,
@@ -23,10 +27,15 @@ type MarketWatch = {
   id: string;
   name: string;
   shortName: string;
-  unit: "pt" | "원";
+  unit: "pt" | "원" | "%" | "USD";
+  group: "korea" | "global-index" | "global-indicator";
 };
 
 type AdminGameOverview = {
+  analysisModel: {
+    selectedModel: string;
+    suggestions: string[];
+  };
   seasons: Array<{
     id: string;
     slug: string;
@@ -49,6 +58,31 @@ type AdminGameOverview = {
   }>;
 };
 
+type AccessRequest = {
+  id: string;
+  email: string;
+  displayName: string | null;
+  status: "pending" | "approved" | "rejected";
+  requestedAt: string;
+  decidedAt: string | null;
+};
+
+function AccessRequestAdminSection({ requests, savingId, onDecide }: { requests: AccessRequest[]; savingId: string | null; onDecide: (id: string, status: "approved" | "rejected") => void }) {
+  const pendingRequests = requests.filter((request) => request.status === "pending");
+  const processedRequests = requests.filter((request) => request.status !== "pending");
+  return <section className="access-request-admin">
+    <div className="access-request-admin-head"><div><span>MEMBER ACCESS</span><strong>서비스 접근 요청</strong></div><small>대기 요청만 바로 처리합니다.</small></div>
+    {pendingRequests.length ? <div className="access-request-list">{pendingRequests.map((request) => <article key={request.id} className={request.status}>
+      <div><strong>{request.displayName || "이름 없음"}</strong><small>{request.email}</small><time>요청 {new Date(request.requestedAt).toLocaleString("ko-KR")}</time></div>
+      <div><span>{request.status === "pending" ? "대기" : request.status === "approved" ? "승인" : "거절"}</span>{request.status === "pending" && <p><button type="button" disabled={savingId === request.id} onClick={() => onDecide(request.id, "approved")}>승인</button><button type="button" disabled={savingId === request.id} onClick={() => onDecide(request.id, "rejected")}>거절</button></p>}</div>
+    </article>)}</div> : <p className="league-empty-copy">대기 중인 접근 요청이 없습니다.</p>}
+    {processedRequests.length > 0 && <details className="access-request-history"><summary>처리 이력 {processedRequests.length.toLocaleString("ko-KR")}건 보기</summary><div className="access-request-list">{processedRequests.map((request) => <article key={request.id} className={request.status}>
+      <div><strong>{request.displayName || "이름 없음"}</strong><small>{request.email}</small><time>{request.status === "approved" ? "승인" : "거절"} {request.decidedAt ? new Date(request.decidedAt).toLocaleString("ko-KR") : "시각 미확인"}</time></div>
+      <div><span>{request.status === "approved" ? "승인" : "거절"}</span></div>
+    </article>)}</div></details>}
+  </section>;
+}
+
 const QUICK_BUY_ALLOCATIONS = [
   { label: "10%", value: 10 },
   { label: "25%", value: 25 },
@@ -56,19 +90,31 @@ const QUICK_BUY_ALLOCATIONS = [
   { label: "최대", value: 100 },
 ] as const;
 
+const RESEARCH_FEED_INITIAL_COUNT = 5;
+const RESEARCH_FEED_STEP = 5;
+
 type QuickBuyAllocation = (typeof QUICK_BUY_ALLOCATIONS)[number]["value"];
 
 const MARKET_WATCHES: MarketWatch[] = [
-  { id: "kospi", name: "코스피", shortName: "KOSPI", unit: "pt" },
-  { id: "kosdaq", name: "코스닥", shortName: "KOSDAQ", unit: "pt" },
-  { id: "sp500", name: "S&P 500", shortName: "S&P 500", unit: "pt" },
-  { id: "nasdaq100", name: "나스닥 100", shortName: "NASDAQ 100", unit: "pt" },
-  { id: "nasdaq", name: "나스닥 종합", shortName: "NASDAQ", unit: "pt" },
-  { id: "dow", name: "다우존스", shortName: "DOW", unit: "pt" },
-  { id: "russell", name: "러셀 2000", shortName: "RUSSELL 2000", unit: "pt" },
-  { id: "sox", name: "필라델피아 반도체", shortName: "SOX", unit: "pt" },
-  { id: "usdkrw", name: "달러 / 원", shortName: "USD/KRW", unit: "원" },
-  { id: "vix", name: "VIX 변동성 지수", shortName: "VIX", unit: "pt" },
+  { id: "kospi", name: "코스피", shortName: "KOSPI", unit: "pt", group: "korea" },
+  { id: "kosdaq", name: "코스닥", shortName: "KOSDAQ", unit: "pt", group: "korea" },
+  { id: "sp500", name: "S&P 500", shortName: "S&P 500", unit: "pt", group: "global-index" },
+  { id: "nasdaq100", name: "나스닥 100", shortName: "NASDAQ 100", unit: "pt", group: "global-index" },
+  { id: "nasdaq", name: "나스닥 종합", shortName: "NASDAQ", unit: "pt", group: "global-index" },
+  { id: "dow", name: "다우존스", shortName: "DOW", unit: "pt", group: "global-index" },
+  { id: "russell", name: "러셀 2000", shortName: "RUSSELL 2000", unit: "pt", group: "global-index" },
+  { id: "sox", name: "필라델피아 반도체", shortName: "SOX", unit: "pt", group: "global-index" },
+  { id: "taiex", name: "대만 가권지수", shortName: "TAIEX", unit: "pt", group: "global-index" },
+  { id: "csi300", name: "중국 CSI 300", shortName: "CSI 300", unit: "pt", group: "global-index" },
+  { id: "hangsengtech", name: "항셍테크 ETF 추적", shortName: "HSTECH ETF", unit: "pt", group: "global-index" },
+  { id: "nikkei", name: "일본 닛케이 225", shortName: "NIKKEI 225", unit: "pt", group: "global-index" },
+  { id: "nasdaqfutures", name: "나스닥 100 선물", shortName: "NASDAQ FUT", unit: "pt", group: "global-index" },
+  { id: "sp500futures", name: "S&P 500 선물", shortName: "S&P FUT", unit: "pt", group: "global-index" },
+  { id: "usdkrw", name: "달러 / 원", shortName: "USD/KRW", unit: "원", group: "global-indicator" },
+  { id: "vix", name: "VIX 변동성 지수", shortName: "VIX", unit: "pt", group: "global-indicator" },
+  { id: "dxy", name: "달러 인덱스", shortName: "DXY", unit: "pt", group: "global-indicator" },
+  { id: "ust10y", name: "미국 10년물 국채금리", shortName: "US 10Y", unit: "%", group: "global-indicator" },
+  { id: "wti", name: "WTI 유가", shortName: "WTI", unit: "USD", group: "global-indicator" },
 ];
 
 function supportsPaperTrading(ticker: Pick<Ticker, "assetType" | "market">) {
@@ -86,6 +132,12 @@ function formatPrice(value: number) {
 function formatUsd(value: number | null | undefined) {
   if (value === null || value === undefined) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+}
+
+function formatMarketWatchPrice(value: number, unit: MarketWatch["unit"]) {
+  if (unit === "USD") return formatUsd(value);
+  if (unit === "%") return value.toFixed(2);
+  return formatPrice(value);
 }
 
 function naverStockPageUrl(ticker: Pick<Ticker, "code" | "currency" | "market">) {
@@ -130,17 +182,85 @@ function leagueSecurityTicker(security: {
   market: string;
   nativeCurrency?: string;
   nativePrice?: string;
+  assetType?: "STOCK" | "ETF" | "INDEX";
 }): Ticker {
   const isUsd = security.nativeCurrency === "USD" || ["NASDAQ", "NYSE", "AMEX"].includes(security.market);
   return {
     code: security.symbol,
     name: security.securityName,
     market: security.market as Ticker["market"],
-    assetType: "STOCK",
+    assetType: security.assetType ?? "STOCK",
     marketCap: 0,
     price: Number(security.nativePrice) || 0,
     currency: isUsd ? "USD" : "KRW",
   };
+}
+
+function localDateInputValue() {
+  const now = new Date();
+  const timezoneOffset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
+}
+
+function researchNotePreview(note: string) {
+  const plainText = note
+    .replace(/```[\s\S]*?```/gu, " 코드 블록 ")
+    .replace(/!?(?:\[[^\]]*\])\([^)]*\)/gu, " ")
+    .replace(/[#>*_`|]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const characters = Array.from(plainText);
+  return characters.length > 360 ? `${characters.slice(0, 360).join("")}…` : plainText;
+}
+
+function ResearchNoteBody({ note, expanded = true }: { note: string | null; expanded?: boolean }) {
+  if (!note) return <p className="research-note-empty">분석 메모가 없습니다.</p>;
+  if (!expanded) return <p className="research-note-preview">{researchNotePreview(note)}</p>;
+  return <div className="research-note-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{note}</ReactMarkdown></div>;
+}
+
+function SecurityResearchNotes({ ticker }: { ticker: Ticker }) {
+  const [research, setResearch] = useState<ResearchNotesPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showAllNotes, setShowAllNotes] = useState(false);
+  const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(() => new Set());
+
+  const load = useCallback(async (cursor?: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({ symbol: ticker.code, market: ticker.market });
+      if (cursor) params.set("cursor", cursor);
+      const response = await fetch(`/api/game/research-notes?${params.toString()}`, { cache: "no-store" });
+      const payload = await response.json() as { research?: ResearchNotesPage; error?: string };
+      if (!response.ok || !payload.research) throw new Error(payload.error || "공개 분석 노트를 불러오지 못했습니다.");
+      setResearch((current) => cursor && current ? { notes: [...current.notes, ...payload.research!.notes], nextCursor: payload.research!.nextCursor, total: payload.research!.total } : payload.research!);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "공개 분석 노트를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [ticker.code, ticker.market]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  const visibleNotes = showAllNotes ? research?.notes : research?.notes.slice(0, 3);
+  const toggleExpanded = (id: string) => setExpandedNoteIds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  return <section className="security-research-notes" aria-label={`${ticker.name} 리그 분석 노트`}>
+    <div className="research-section-heading"><div><span>LEAGUE RESEARCH</span><strong>{ticker.name} 분석 노트</strong></div><button type="button" onClick={() => void load()} disabled={loading}>{loading ? "불러오는 중…" : "새로고침"}</button></div>
+    <p className="research-disclaimer">리그 참가자가 공개한 개인 분석입니다. 투자 권유가 아닙니다.</p>
+    {error ? <p className="research-note-error">{error}</p> : loading && !research ? <div className="league-inline-loading">공개 분석 노트를 불러오는 중…</div> : research?.notes.length ? <><div className="research-note-list">{visibleNotes?.map((note) => { const expanded = expandedNoteIds.has(note.id); return <article key={note.id} className="research-note-card"><header><div><strong>{note.nickname}{note.isMine ? " · 나" : ""}</strong><small>분석 기준일 {note.analysisDate} · 작성 {new Date(note.createdAt).toLocaleDateString("ko-KR")}</small></div><span>{note.assetType === "ETF" ? "ETF" : note.market}</span></header>{note.chartImageUrl && <a className="research-chart-image" href={note.chartImageUrl} target="_blank" rel="noreferrer"><img src={note.chartImageUrl} alt={`${note.securityName} 분석 차트`} /></a>}<ResearchNoteBody note={note.researchNote} expanded={expanded} />{note.researchNote && <button type="button" className="research-expand-button" aria-expanded={expanded} onClick={() => toggleExpanded(note.id)}>{expanded ? "접기" : "전문 보기"}</button>}</article>; })}</div>{research.total > 3 && <button type="button" className="research-list-toggle" onClick={() => setShowAllNotes((current) => !current)}>{showAllNotes ? "최근 3개만 보기" : `전체 분석 노트 ${research.total.toLocaleString("ko-KR")}개 보기`}</button>}</> : <p className="league-empty-copy">아직 공개된 분석 노트가 없습니다.</p>}
+    {research?.nextCursor && <button type="button" className="research-load-more" disabled={loading} onClick={() => { const cursor = research.nextCursor; if (cursor) void load(cursor); }}>{loading ? "불러오는 중…" : "이전 분석 더 보기"}</button>}
+  </section>;
 }
 
 type PriceChangeSummary = {
@@ -152,12 +272,36 @@ type PriceChangeSummary = {
 
 type PriceChangePeriod = "daily" | "weekly" | "monthly";
 type PriceChangeSet = Record<PriceChangePeriod, PriceChangeSummary | null>;
+type ChartApiPayload = {
+  points: ChartPoint[];
+  changes?: PriceChangeSet;
+  exchangeRate?: number;
+  isNasdaq100?: boolean;
+  classification?: SecurityClassification;
+};
 type ClassificationFilter = { kind: "market" | "sector" | "theme"; value: string };
 
 const EMPTY_PRICE_CHANGES: PriceChangeSet = { daily: null, weekly: null, monthly: null };
 const CHART_RANGE_MIN = 10;
 const CHART_RANGE_MAX = 360;
 const CHART_RANGE_STEP = 5;
+
+type TrendLinePoint = { date: string; price: number };
+type TrendLine = { id: string; start: TrendLinePoint; end: TrendLinePoint };
+type ChartCanvasHandle = {
+  copyImage: () => Promise<boolean>;
+  captureImage: () => Promise<Blob | null>;
+  undoTrendLine: () => void;
+  clearTrendLines: () => void;
+};
+type ChartCanvasProps = {
+  points: ChartPoint[];
+  range: number;
+  onRangeChange: (range: number) => void;
+  trendLineMode: boolean;
+  trendLineStorageKey: string;
+  exportTitle: string;
+};
 
 function candidateKey(item: Pick<Candidate, "code" | "timeframe" | "maPeriod">) {
   return `${item.code}:${item.timeframe}:${item.maPeriod}`;
@@ -167,15 +311,7 @@ function compareCandidates(a: Candidate, b: Candidate) {
   return b.marketCap - a.marketCap || a.code.localeCompare(b.code) || a.timeframe.localeCompare(b.timeframe);
 }
 
-function ChartCanvas({
-  points,
-  range,
-  onRangeChange,
-}: {
-  points: ChartPoint[];
-  range: number;
-  onRangeChange: (range: number) => void;
-}) {
+const ChartCanvas = forwardRef<ChartCanvasHandle, ChartCanvasProps>(function ChartCanvas({ points, range, onRangeChange, trendLineMode, trendLineStorageKey, exportTitle }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; start: number } | null>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
@@ -188,6 +324,8 @@ function ChartCanvas({
   // keeps the chart pinned to the latest data while its range changes.
   const [panOffset, setPanOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [trendLines, setTrendLines] = useState<TrendLine[]>([]);
+  const [draftTrendPoint, setDraftTrendPoint] = useState<TrendLinePoint | null>(null);
   const maxPanStart = Math.max(0, points.length - range);
   const safePanOffset = Math.min(panOffset, maxPanStart);
   const safePanStart = maxPanStart - safePanOffset;
@@ -216,6 +354,83 @@ function ChartCanvas({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPanOffset(0);
   }, [points]);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(trendLineStorageKey) ?? "[]") as TrendLine[];
+      // A new ticker/timeframe has a separate saved drawing layer.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTrendLines(Array.isArray(parsed) ? parsed.filter((line) => line?.start?.date && line?.end?.date && Number.isFinite(line.start.price) && Number.isFinite(line.end.price)) : []);
+    } catch {
+      setTrendLines([]);
+    }
+    setDraftTrendPoint(null);
+  }, [trendLineStorageKey]);
+
+  const persistTrendLines = useCallback((next: TrendLine[]) => {
+    setTrendLines(next);
+    try { window.localStorage.setItem(trendLineStorageKey, JSON.stringify(next)); } catch { /* private-mode storage is optional */ }
+  }, [trendLineStorageKey]);
+
+  const addTrendPoint = useCallback((point: TrendLinePoint) => {
+    if (!draftTrendPoint) {
+      setDraftTrendPoint(point);
+      return;
+    }
+    if (draftTrendPoint.date === point.date && Math.abs(draftTrendPoint.price - point.price) < 0.000001) return;
+    persistTrendLines([...trendLines, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, start: draftTrendPoint, end: point }]);
+    // Keep the latest point active so one drawing can continue as a connected path.
+    // A double click (or leaving drawing mode) explicitly completes the path.
+    setDraftTrendPoint(point);
+  }, [draftTrendPoint, persistTrendLines, trendLines]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!trendLineMode) setDraftTrendPoint(null);
+  }, [trendLineMode]);
+
+  const captureImage = useCallback(async () => {
+      const chartCanvas = canvasRef.current;
+      if (!chartCanvas) return null;
+      const dpr = window.devicePixelRatio || 1;
+      const padding = Math.round(18 * dpr);
+      const headerHeight = Math.round(48 * dpr);
+      const output = document.createElement("canvas");
+      output.width = chartCanvas.width + padding * 2;
+      output.height = chartCanvas.height + headerHeight + padding;
+      const context = output.getContext("2d");
+      if (!context) return null;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, output.width, output.height);
+      context.fillStyle = "#0f3229";
+      context.font = `700 ${Math.round(15 * dpr)}px sans-serif`;
+      context.fillText(exportTitle, padding, Math.round(25 * dpr));
+      context.fillStyle = "#718079";
+      context.font = `500 ${Math.round(10 * dpr)}px sans-serif`;
+      context.fillText("LINE BREAKER · 이동평균 및 추세선", padding, Math.round(42 * dpr));
+      context.drawImage(chartCanvas, padding, headerHeight);
+      const blob = await new Promise<Blob | null>((resolve) => output.toBlob(resolve, "image/png"));
+      return blob;
+    }, [exportTitle]);
+
+  useImperativeHandle(ref, () => ({
+    captureImage,
+    copyImage: async () => {
+      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
+      const blob = await captureImage();
+      if (!blob) return false;
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      return true;
+    },
+    undoTrendLine: () => {
+      setDraftTrendPoint(null);
+      persistTrendLines(trendLines.slice(0, -1));
+    },
+    clearTrendLines: () => {
+      setDraftTrendPoint(null);
+      persistTrendLines([]);
+    },
+  }), [captureImage, persistTrendLines, trendLines]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -333,6 +548,35 @@ function ChartCanvas({
       drawMovingAverage("ma10", ma10Color, 2.2);
       drawMovingAverage("ma240", ma240Color, 2.3);
 
+      const trendPointPosition = (point: TrendLinePoint) => {
+        const index = visible.findIndex((candle) => candle.date === point.date);
+        return index < 0 ? null : { x: x(index), y: y(point.price) };
+      };
+      const drawTrendPoint = (point: TrendLinePoint, color: string) => {
+        const position = trendPointPosition(point);
+        if (!position) return;
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(position.x, position.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      };
+      trendLines.forEach((line) => {
+        const start = trendPointPosition(line.start);
+        const end = trendPointPosition(line.end);
+        if (!start || !end) return;
+        ctx.strokeStyle = "#8a56d6";
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+      });
+      if (draftTrendPoint) drawTrendPoint(draftTrendPoint, "#c47b12");
+
       const labelIndexes = [0, Math.floor((visible.length - 1) / 2), visible.length - 1];
       ctx.fillStyle = "#8a928d";
       ctx.textAlign = "center";
@@ -375,13 +619,13 @@ function ChartCanvas({
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [visible, focusedIndex, focusedPoint]);
+  }, [visible, focusedIndex, focusedPoint, trendLines, draftTrendPoint]);
 
   return (
     <div className="chart-wrap">
       <canvas
         ref={canvasRef}
-        className={`chart-canvas${dragging ? " is-dragging" : ""}`}
+        className={`chart-canvas${dragging ? " is-dragging" : ""}${trendLineMode ? " is-drawing-trendline" : ""}`}
         role="img"
         aria-label="선택 종목의 캔들, 이동평균선과 거래량 차트"
         onPointerLeave={(event) => {
@@ -392,6 +636,10 @@ function ChartCanvas({
           }
         }}
         onPointerDown={(event) => {
+          if (trendLineMode) {
+            event.preventDefault();
+            return;
+          }
           event.currentTarget.setPointerCapture(event.pointerId);
           pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
           const pointers = [...pointersRef.current.values()];
@@ -409,6 +657,24 @@ function ChartCanvas({
           setHoverPoint(null);
         }}
         onPointerUp={(event) => {
+          if (trendLineMode) {
+            const rect = event.currentTarget.getBoundingClientRect();
+            const left = 10;
+            const right = 62;
+            const top = 18;
+            const priceBottom = rect.height * 0.69;
+            const ratio = Math.max(0, Math.min(0.999, (event.clientX - rect.left - left) / (rect.width - left - right)));
+            const index = Math.min(visible.length - 1, Math.floor(ratio * visible.length));
+            const highs = visible.map((point) => point.high);
+            const lows = visible.map((point) => point.low);
+            const maValues = visible.flatMap((point) => [point.ma5, point.ma10, point.ma240].filter((value): value is number => value !== null));
+            const minPrice = Math.min(...lows, ...maValues) * 0.985;
+            const maxPrice = Math.max(...highs, ...maValues) * 1.015;
+            const pointerY = Math.max(top, Math.min(priceBottom, event.clientY - rect.top));
+            const price = maxPrice - ((pointerY - top) / Math.max(priceBottom - top, 1)) * (maxPrice - minPrice);
+            if (visible[index]) addTrendPoint({ date: visible[index].date, price });
+            return;
+          }
           const dragStart = dragRef.current;
           const wasPinching = pinchRef.current !== null;
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -451,6 +717,7 @@ function ChartCanvas({
           setDragging(false);
         }}
         onPointerMove={(event) => {
+          if (trendLineMode) return;
           pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
           const rect = event.currentTarget.getBoundingClientRect();
           const left = 10;
@@ -491,6 +758,11 @@ function ChartCanvas({
           const price = maxPrice - ((y - top) / Math.max(priceBottom - top, 1)) * (maxPrice - minPrice);
           setHoverPoint({ y, price });
         }}
+        onDoubleClick={(event) => {
+          if (!trendLineMode) return;
+          event.preventDefault();
+          setDraftTrendPoint(null);
+        }}
       />
       {active && (
         <div
@@ -515,11 +787,12 @@ function ChartCanvas({
       )}
     </div>
   );
-}
+});
 
 type AuthStatus =
   | { phase: "loading" }
   | { phase: "signed-out"; configured: boolean; error?: string }
+  | { phase: "access-pending"; user: AuthUser; status: "pending" | "rejected" }
   | { phase: "signed-in"; user: AuthUser };
 
 function LoginGate({ status }: { status: Exclude<AuthStatus, { phase: "signed-in" }> }) {
@@ -555,6 +828,19 @@ function LoginGate({ status }: { status: Exclude<AuthStatus, { phase: "signed-in
   );
 }
 
+function AccessPendingGate({ status }: { status: Extract<AuthStatus, { phase: "access-pending" }> }) {
+  const rejected = status.status === "rejected";
+  return <main className="login-shell"><section className="login-card access-pending-card">
+    <img className="login-logo" src="/brand-mark.png" alt="선 넘네.." />
+    <p className="login-eyebrow">ACCESS REQUEST</p>
+    <h1>{rejected ? "접근 요청이 보류되었습니다" : "접근 승인 대기 중"}</h1>
+    <p className="login-description">{rejected ? "운영자에게 문의해 주세요." : "운영자가 승인하면 이 화면을 새로고침해 바로 이용할 수 있습니다."}</p>
+    <div className="access-pending-user"><strong>{status.user.name}</strong><span>{status.user.email}</span></div>
+    {!rejected && <button type="button" className="google-login-button" onClick={() => window.location.reload()}>승인 상태 다시 확인</button>}
+    <a className="access-logout" href="/api/auth/logout">다른 계정으로 로그인</a>
+  </section></main>;
+}
+
 export default function Home() {
   const [authStatus, setAuthStatus] = useState<AuthStatus>({ phase: "loading" });
 
@@ -564,10 +850,11 @@ export default function Home() {
     fetch("/api/auth/session", { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("인증 상태를 확인하지 못했습니다.");
-        return response.json() as Promise<{ authenticated: boolean; configured: boolean; user: AuthUser | null }>;
+        return response.json() as Promise<{ authenticated: boolean; configured: boolean; accessStatus?: "pending" | "approved" | "rejected"; user: AuthUser | null }>;
       })
       .then((payload) => {
         if (payload.authenticated && payload.user) setAuthStatus({ phase: "signed-in", user: payload.user });
+        else if (payload.user && (payload.accessStatus === "pending" || payload.accessStatus === "rejected")) setAuthStatus({ phase: "access-pending", user: payload.user, status: payload.accessStatus });
         else setAuthStatus({ phase: "signed-out", configured: payload.configured, error });
       })
       .catch((fetchError) => {
@@ -578,6 +865,7 @@ export default function Home() {
     return () => controller.abort();
   }, []);
 
+  if (authStatus.phase === "access-pending") return <AccessPendingGate status={authStatus} />;
   if (authStatus.phase !== "signed-in") return <LoginGate status={authStatus} />;
   return <Dashboard authUser={authStatus.user} />;
 }
@@ -736,21 +1024,194 @@ function FavoriteDialog({
   );
 }
 
+function analysisOpinionLabel(opinion: StockDeepAnalysis["opinion"]) {
+  return opinion === "STRONG_BUY" ? "적극 매수" : opinion === "BUY" ? "매수" : opinion === "HOLD" ? "관망" : "매도";
+}
+
+function analysisPrice(value: number | null, currency: "KRW" | "USD") {
+  if (value === null) return "확인되지 않음";
+  return currency === "USD" ? formatUsd(value) : `${formatPrice(value)}원`;
+}
+
+function analysisMetric(value: number, unit: string) {
+  if (unit === "%" || unit === "배") return `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}${unit}`;
+  if (unit === "USD") return formatUsd(value);
+  return `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}${unit}`;
+}
+
+function signedQuantity(value: number | null) {
+  if (value === null) return "미확인";
+  return `${value > 0 ? "+" : ""}${Math.round(value).toLocaleString("ko-KR")}주`;
+}
+
+function holdingReturnPct(holding: { averageCostKrw: string; quantity: number; unrealizedPnlKrw: string }) {
+  const costKrw = Number(holding.averageCostKrw) * holding.quantity;
+  const pnlKrw = Number(holding.unrealizedPnlKrw);
+  if (!Number.isFinite(costKrw) || costKrw <= 0 || !Number.isFinite(pnlKrw)) return null;
+  return (pnlKrw / costKrw) * 100;
+}
+
+function StockAnalysisDialog({ ticker, onClose }: { ticker: Ticker; onClose: () => void }) {
+  const [analysis, setAnalysis] = useState<StockDeepAnalysis | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [error, setError] = useState("");
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const closeHandlerRef = useRef(onClose);
+  const analysisRequestRef = useRef(0);
+
+  useEffect(() => {
+    closeHandlerRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const progressTimer = window.setInterval(() => setLoadingStep((step) => Math.min(step + 1, 2)), 4_500);
+    const requestId = analysisRequestRef.current + 1;
+    analysisRequestRef.current = requestId;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") closeHandlerRef.current(); };
+    document.addEventListener("keydown", closeOnEscape);
+    document.body.style.overflow = "hidden";
+    const focusFrame = requestAnimationFrame(() => closeButtonRef.current?.focus());
+    fetch("/api/analysis", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: ticker.code, market: ticker.market }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json() as { analysis?: StockDeepAnalysis; error?: string };
+        if (!response.ok || !payload.analysis) throw new Error(payload.error || "AI 심층분석을 불러오지 못했습니다.");
+        if (controller.signal.aborted || analysisRequestRef.current !== requestId) return;
+        setAnalysis(payload.analysis);
+      })
+      .catch((loadError) => {
+        if (!controller.signal.aborted && analysisRequestRef.current === requestId && loadError instanceof Error && loadError.name !== "AbortError") setError(loadError.message);
+      })
+      .finally(() => { if (!controller.signal.aborted && analysisRequestRef.current === requestId) setLoading(false); });
+    return () => {
+      controller.abort();
+      cancelAnimationFrame(focusFrame);
+      window.clearInterval(progressTimer);
+      document.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = "";
+    };
+  }, [ticker.code, ticker.market]);
+
+  return (
+    <div className="analysis-dialog-backdrop" role="presentation">
+      <section className="analysis-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-dialog-title">
+        <button ref={closeButtonRef} className="analysis-dialog-close" type="button" onClick={onClose} aria-label="AI 심층분석 닫기">×</button>
+        <header className="analysis-dialog-heading">
+          <span aria-hidden="true">AI</span>
+          <div><p>DATA-DRIVEN STOCK RESEARCH</p><h2 id="analysis-dialog-title">{ticker.name} AI 심층분석</h2><small>{ticker.code} · {ticker.market} · {analysis?.security.marketCap ? `시가총액 ${formatCap(analysis.security.marketCap)}` : "최신 공개정보 기준"}</small></div>
+        </header>
+
+        {loading ? (
+          <div className="analysis-loading"><span /><strong>{["공시·IR·차트 근거를 수집하고 있습니다.", "강세 논지와 반대 논지를 독립적으로 검토하고 있습니다.", "수석 애널리스트가 근거를 교차 검증해 보고서를 작성하고 있습니다."][loadingStep]}</strong><small>리서치 수집가 · 반대 논지 검토자 · 최종 편집자가 순서대로 작동합니다.</small></div>
+        ) : error ? (
+          <div className="analysis-error" role="alert"><strong>분석을 완료하지 못했습니다.</strong><p>{error}</p><button type="button" onClick={onClose}>닫기</button></div>
+        ) : analysis && (
+          <div className="analysis-content">
+            <section className="analysis-verdict">
+              <div><span className={`analysis-opinion ${analysis.opinion.toLowerCase()}`}>{analysisOpinionLabel(analysis.opinion)}</span><small>분석 신뢰도 {Math.round(analysis.confidence)}%</small></div>
+              <h3>{analysis.oneLineConclusion}</h3>
+              <p>{new Date(analysis.generatedAt).toLocaleString("ko-KR")} 생성{analysis.cached ? " · 캐시된 분석" : ""}</p>
+            </section>
+
+            <section className="analysis-quality" aria-label="분석 근거 품질">
+              <div><span>RESEARCH QUALITY</span><strong>근거 품질 {analysis.quality.score}점</strong></div>
+              <p>근거 카드 {analysis.quality.evidenceCount}개 · 1차 공시 {analysis.quality.primaryEvidenceCount}개 · 섹션 출처 연결 {analysis.quality.citationCoveragePct}%</p>
+              {analysis.quality.issues.length > 0 && <small>{analysis.quality.issues.join(" ")}</small>}
+            </section>
+
+            <div className="analysis-price-grid">
+              <article><span>적정 진입가</span><strong>{analysisPrice(analysis.prices.entry, analysis.prices.currency)}</strong></article>
+              <article><span>12개월 목표가</span><strong>{analysisPrice(analysis.prices.target, analysis.prices.currency)}</strong></article>
+              <article><span>손절 기준가</span><strong>{analysisPrice(analysis.prices.stop, analysis.prices.currency)}</strong></article>
+            </div>
+            <p className="analysis-price-method"><strong>산정 기준</strong>{analysis.prices.method}</p>
+
+            {analysis.fundamentals && (
+              <section className="analysis-fundamentals">
+                <div><span>VERIFIED FUNDAMENTALS</span><strong>확인된 재무·밸류에이션</strong><small>{analysis.fundamentals.period}{analysis.fundamentals.asOf ? ` · 기준 ${analysis.fundamentals.asOf}` : ""}</small></div>
+                <dl>{analysis.fundamentals.metrics.map((metric) => <div key={metric.label}><dt>{metric.label}</dt><dd>{analysisMetric(metric.value, metric.unit)}</dd></div>)}</dl>
+                <a href={analysis.fundamentals.source.url} target="_blank" rel="noreferrer">출처: {analysis.fundamentals.source.title} ↗</a>
+              </section>
+            )}
+
+            {analysis.marketIntelligence && (
+              <section className="analysis-market-intelligence">
+                <div><span>VERIFIED MARKET INTELLIGENCE</span><strong>수급 · 컨센서스 · 리서치 · 최근 뉴스</strong><small>{analysis.marketIntelligence.asOf ? `기준 ${analysis.marketIntelligence.asOf}` : "최근 공개 정보 기준"}</small></div>
+                {analysis.marketIntelligence.investor && <div className="analysis-intelligence-grid">
+                  <article><span>외국인 5일 순매수</span><strong className={analysis.marketIntelligence.investor.foreignFiveDay !== null && analysis.marketIntelligence.investor.foreignFiveDay < 0 ? "negative" : "positive"}>{signedQuantity(analysis.marketIntelligence.investor.foreignFiveDay)}</strong><small>{analysis.marketIntelligence.investor.foreignBuyDays}/5일 순매수 · 보유 {analysis.marketIntelligence.investor.foreignHoldingPct?.toFixed(2) ?? "-"}%</small></article>
+                  <article><span>기관 5일 순매수</span><strong className={analysis.marketIntelligence.investor.institutionFiveDay !== null && analysis.marketIntelligence.investor.institutionFiveDay < 0 ? "negative" : "positive"}>{signedQuantity(analysis.marketIntelligence.investor.institutionFiveDay)}</strong><small>{analysis.marketIntelligence.investor.institutionBuyDays}/5일 순매수</small></article>
+                </div>}
+                {analysis.marketIntelligence.consensus && <p className="analysis-consensus">컨센서스 의견 <strong>{analysis.marketIntelligence.consensus.rating?.toFixed(2) ?? "미확인"}</strong> · 목표가 <strong>{analysis.marketIntelligence.consensus.targetPrice ? `${formatPrice(analysis.marketIntelligence.consensus.targetPrice)}원` : "미확인"}</strong>{analysis.marketIntelligence.consensus.asOf ? ` · ${analysis.marketIntelligence.consensus.asOf}` : ""}</p>}
+                {analysis.marketIntelligence.researches.length > 0 && <ul className="analysis-researches">{analysis.marketIntelligence.researches.map((research) => <li key={`${research.broker}:${research.title}`}><strong>{research.broker}</strong><span>{research.title}</span><small>{research.date ?? ""}</small></li>)}</ul>}
+                {analysis.marketIntelligence.recentNews.length > 0 && <div className="analysis-news"><strong>최근 종목 뉴스</strong><small>뉴스는 공시·회사 IR과 교차 확인 전까지 보조 근거로만 사용합니다.</small><ul>{analysis.marketIntelligence.recentNews.slice(0, 5).map((news) => <li key={news.id}><span className={news.directMention ? "direct" : "context"}>{news.directMention ? "직접 언급" : "시장 맥락"}</span><a href={news.url} target="_blank" rel="noreferrer">{news.title}</a><small>{news.office} · {news.publishedAt ?? "시각 미확인"}</small></li>)}</ul></div>}
+                <a href={analysis.marketIntelligence.source.url} target="_blank" rel="noreferrer">출처: {analysis.marketIntelligence.source.title} ↗</a>
+              </section>
+            )}
+
+            <div className="analysis-sections">
+              {analysis.sections.map((section, index) => (
+                <details key={section.id} open={index < 2}>
+                  <summary><span>{String(index + 1).padStart(2, "0")}</span><strong>{section.title.replace(/^\d+\.\s*/u, "")}</strong><em>＋</em></summary>
+                  <div>
+                    <p>{section.summary}</p>
+                    <ul>{section.bullets.map((bullet, bulletIndex) => <li key={`${section.id}-${bulletIndex}`}>{bullet}</li>)}</ul>
+                    {section.sourceIds.length > 0 && <small>근거: {section.sourceIds.join(" · ")}</small>}
+                  </div>
+                </details>
+              ))}
+            </div>
+
+            <section className="analysis-scenarios">
+              <div><span>SCENARIO MAP</span><strong>세 가지 가능성</strong></div>
+              <div>{analysis.scenarios.map((scenario) => <article key={scenario.name}><header><strong>{scenario.name}</strong><span>{Math.round(scenario.probabilityPct)}%</span></header><p>{scenario.rationale}</p><small>목표 {analysisPrice(scenario.targetPrice, analysis.prices.currency)} · 손절 {analysisPrice(scenario.stopPrice, analysis.prices.currency)}</small></article>)}</div>
+            </section>
+
+            {analysis.missingData.length > 0 && <section className="analysis-missing"><strong>확인되지 않은 정보</strong><ul>{analysis.missingData.map((item, index) => <li key={index}>{item}</li>)}</ul></section>}
+
+            <details className="analysis-evidence">
+              <summary><span>FACT LEDGER</span><strong>확인된 근거 카드 {analysis.evidence.length}개</strong><em>＋</em></summary>
+              <ul>{analysis.evidence.map((card) => <li key={card.id}><span>{card.id}</span><div><strong>{card.claim}</strong><p>{card.value}</p><small>{card.period ?? "기간 미확인"}{card.asOf ? ` · ${card.asOf}` : ""} · {card.sourceTier === "primary" ? "1차 공시" : card.sourceTier === "derived" ? "차트 계산" : "시장 데이터"}</small></div><a href={card.sourceUrl} target="_blank" rel="noreferrer">{card.sourceId} ↗</a></li>)}</ul>
+            </details>
+
+            <section className="analysis-sources">
+              <div><span>SOURCES</span><strong>분석 근거</strong></div>
+              <ol>{analysis.sources.map((source) => <li key={`${source.id}:${source.url}`}><span>{source.id}</span><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a>{source.publishedAt && <small>{source.publishedAt}</small>}</li>)}</ol>
+            </section>
+
+            <footer className="analysis-disclaimer"><strong>AI 분석 안내</strong><p>{analysis.disclaimer}</p><small>모델: {analysis.model}</small></footer>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function LeagueDialog({
   onClose,
   onOpenChart,
+  onCaptureChart,
   ticker,
 }: {
   onClose: () => void;
   onOpenChart: (ticker: Ticker) => void;
+  onCaptureChart: () => Promise<Blob | null>;
   ticker: Ticker | null;
 }) {
   const [game, setGame] = useState<GameOverview | null>(null);
   const [dashboard, setDashboard] = useState<PortfolioDashboard | null>(null);
   const [league, setLeague] = useState<LeagueOverview | null>(null);
+  const [research, setResearch] = useState<ResearchNotesPage | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<PublicPlayerDetail | null>(null);
   const [admin, setAdmin] = useState<AdminGameOverview | null>(null);
-  const [leagueTab, setLeagueTab] = useState<"portfolio" | "ranking" | "activity" | "admin">("portfolio");
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
+  const [accessRequestSavingId, setAccessRequestSavingId] = useState<string | null>(null);
+  const [leagueTab, setLeagueTab] = useState<"portfolio" | "ranking" | "activity" | "research" | "admin">("portfolio");
   const [loading, setLoading] = useState(true);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [leagueLoading, setLeagueLoading] = useState(false);
@@ -763,9 +1224,22 @@ function LeagueDialog({
   const [tradeQuantity, setTradeQuantity] = useState(1);
   const [quickBuyAllocation, setQuickBuyAllocation] = useState<QuickBuyAllocation | null>(null);
   const [tradeNote, setTradeNote] = useState("");
+  const [researchQuery, setResearchQuery] = useState("");
+  const [researchSearchResults, setResearchSearchResults] = useState<Ticker[]>([]);
+  const [researchTicker, setResearchTicker] = useState<Ticker | null>(null);
+  const [researchNoteDraft, setResearchNoteDraft] = useState("");
+  const [researchChartImage, setResearchChartImage] = useState<Blob | null>(null);
+  const [researchChartAttaching, setResearchChartAttaching] = useState(false);
+  const [researchAnalysisDate, setResearchAnalysisDate] = useState(localDateInputValue);
+  const [researchSaving, setResearchSaving] = useState(false);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [expandedResearchNoteIds, setExpandedResearchNoteIds] = useState<Set<string>>(() => new Set());
+  const [researchVisibleCount, setResearchVisibleCount] = useState(RESEARCH_FEED_INITIAL_COUNT);
   const [tradeConfirming, setTradeConfirming] = useState(false);
   const [receipt, setReceipt] = useState<TradeReceipt | null>(null);
   const [adminDraft, setAdminDraft] = useState({ name: "", slug: "", startsAt: "", endsAt: "", initialCashKrw: "100000000", status: "draft" });
+  const [analysisModelDraft, setAnalysisModelDraft] = useState("");
+  const [analysisModelSaving, setAnalysisModelSaving] = useState(false);
   const [error, setError] = useState("");
   const [leagueNotice, setLeagueNotice] = useState("");
   const [leagueRefreshRemaining, setLeagueRefreshRemaining] = useState(0);
@@ -808,6 +1282,37 @@ function LeagueDialog({
     }
   }, []);
 
+  const loadResearch = useCallback(async (cursor?: string, signal?: AbortSignal) => {
+    setResearchLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (cursor) params.set("cursor", cursor);
+      const response = await fetch(`/api/game/research-notes${params.size ? `?${params.toString()}` : ""}`, { signal, cache: "no-store" });
+      const payload = await response.json() as { research?: ResearchNotesPage; error?: string };
+      if (!response.ok || !payload.research) throw new Error(payload.error || "분석 노트를 불러오지 못했습니다.");
+      setResearch((current) => cursor && current ? { notes: [...current.notes, ...payload.research!.notes], nextCursor: payload.research!.nextCursor, total: payload.research!.total } : payload.research!);
+    } finally {
+      if (!signal?.aborted) setResearchLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const query = researchQuery.trim();
+    if (query.length < 1) {
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`/api/search?query=${encodeURIComponent(query)}`, { signal: controller.signal, cache: "no-store" })
+        .then(async (response) => {
+          const payload = await response.json() as { tickers?: Ticker[] };
+          if (response.ok) setResearchSearchResults((payload.tickers ?? []).filter((item) => item.assetType === "STOCK" || item.assetType === "ETF"));
+        })
+        .catch((searchError) => { if (searchError instanceof Error && searchError.name !== "AbortError") setResearchSearchResults([]); });
+    }, 220);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [researchQuery]);
+
   useEffect(() => {
     if (leagueRefreshRemaining <= 0) return;
     const timer = window.setInterval(() => {
@@ -832,14 +1337,24 @@ function LeagueDialog({
   }, []);
 
   const loadAdmin = useCallback(async (signal?: AbortSignal) => {
-    const response = await fetch("/api/admin/game/seasons", { signal, cache: "no-store" });
-    if (response.status === 403) {
+    const [response, accessResponse] = await Promise.all([
+      fetch("/api/admin/game/seasons", { signal, cache: "no-store" }),
+      fetch("/api/admin/access-requests", { signal, cache: "no-store" }),
+    ]);
+    if (accessResponse.status === 403) {
       setAdmin(null);
       return;
     }
+    const accessPayload = (await accessResponse.json()) as { requests?: AccessRequest[]; error?: string };
+    if (!accessResponse.ok || !accessPayload.requests) throw new Error(accessPayload.error || "접근 요청을 불러오지 못했습니다.");
+    setAccessRequests(accessPayload.requests);
     const payload = (await response.json()) as { admin?: AdminGameOverview; error?: string };
-    if (!response.ok || !payload.admin) throw new Error(payload.error || "리그 운영 정보를 불러오지 못했습니다.");
+    if (!response.ok || !payload.admin) {
+      setAdmin(null);
+      return;
+    }
     setAdmin(payload.admin);
+    setAnalysisModelDraft(payload.admin.analysisModel.selectedModel);
   }, []);
 
   useEffect(() => {
@@ -861,8 +1376,8 @@ function LeagueDialog({
         setNickname(payload.game.profile?.nickname ?? "");
         setActivityFeedVisible(payload.game.profile?.activityFeedVisible ?? true);
         setLoading(false);
-        if (payload.game.status === "ready") {
-          const tasks = [loadPortfolio(controller.signal), loadLeague(false, controller.signal)];
+        if (payload.game.status === "ready" || payload.game.isAdmin) {
+          const tasks = payload.game.status === "ready" ? [loadPortfolio(controller.signal), loadLeague(false, controller.signal), loadResearch(undefined, controller.signal)] : [];
           if (payload.game.isAdmin) tasks.push(loadAdmin(controller.signal));
           void Promise.allSettled(tasks).then((outcomes) => {
             if (controller.signal.aborted) return;
@@ -886,7 +1401,7 @@ function LeagueDialog({
       document.removeEventListener("keydown", closeOnEscape);
       document.body.style.overflow = "";
     };
-  }, [loadAdmin, loadLeague, loadPortfolio, onClose]);
+  }, [loadAdmin, loadLeague, loadPortfolio, loadResearch, onClose]);
 
   async function enroll(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -904,7 +1419,7 @@ function LeagueDialog({
       }
       setGame(payload.game);
       if (payload.game.status === "ready") {
-        const tasks = [loadPortfolio(), loadLeague()];
+        const tasks = [loadPortfolio(), loadLeague(), loadResearch()];
         if (payload.game.isAdmin) tasks.push(loadAdmin());
         await Promise.all(tasks);
       }
@@ -912,6 +1427,63 @@ function LeagueDialog({
       setError(submitError instanceof Error ? submitError.message : "리그 참가에 실패했습니다.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function createResearchNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!researchTicker || !researchNoteDraft.trim()) return;
+    if (researchChartImage && (!ticker || ticker.code !== researchTicker.code || ticker.market !== researchTicker.market)) {
+      setError("첨부 차트와 분석 종목이 다릅니다. 현재 차트 종목을 선택하거나 첨부를 제거해 주세요.");
+      return;
+    }
+    setResearchSaving(true);
+    setError("");
+    setLeagueNotice("");
+    try {
+      const body = new FormData();
+      body.set("symbol", researchTicker.code);
+      body.set("market", researchTicker.market);
+      body.set("researchNote", researchNoteDraft);
+      body.set("analysisDate", researchAnalysisDate);
+      if (researchChartImage) body.set("chartImage", researchChartImage, "chart.png");
+      const response = await fetch("/api/game/research-notes", {
+        method: "POST",
+        body,
+      });
+      const payload = await response.json() as { note?: LeagueResearchNote; error?: string };
+      if (!response.ok || !payload.note) throw new Error(payload.error || "분석 노트를 공개하지 못했습니다.");
+      setResearch((current) => current ? { notes: [payload.note!, ...current.notes], nextCursor: current.nextCursor, total: current.total + 1 } : { notes: [payload.note!], nextCursor: null, total: 1 });
+      setResearchNoteDraft("");
+      setResearchChartImage(null);
+      setResearchQuery("");
+      setResearchTicker(null);
+      setResearchAnalysisDate(localDateInputValue());
+      setLeagueNotice("분석 노트를 리그 참가자에게 공개했습니다.");
+    } catch (researchError) {
+      setError(researchError instanceof Error ? researchError.message : "분석 노트를 공개하지 못했습니다.");
+    } finally {
+      setResearchSaving(false);
+    }
+  }
+
+  async function deleteResearchNote(id: string) {
+    setResearchSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/game/research-notes", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "분석 노트를 삭제하지 못했습니다.");
+      setResearch((current) => current ? { ...current, notes: current.notes.filter((note) => note.id !== id), total: Math.max(0, current.total - 1) } : current);
+      setExpandedResearchNoteIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    } catch (researchError) {
+      setError(researchError instanceof Error ? researchError.message : "분석 노트를 삭제하지 못했습니다.");
+    } finally {
+      setResearchSaving(false);
     }
   }
 
@@ -958,7 +1530,7 @@ function LeagueDialog({
     }
   }
 
-  async function selectLeagueTab(nextTab: "portfolio" | "ranking" | "activity" | "admin") {
+  async function selectLeagueTab(nextTab: "portfolio" | "ranking" | "activity" | "research" | "admin") {
     setLeagueTab(nextTab);
     setError("");
     setLeagueNotice("");
@@ -968,6 +1540,20 @@ function LeagueDialog({
         if (nextTab === "ranking") await loadPortfolio();
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "리그 정보를 갱신하지 못했습니다.");
+      }
+    }
+    if (nextTab === "research") {
+      try {
+        await loadResearch();
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "분석 노트를 갱신하지 못했습니다.");
+      }
+    }
+    if (nextTab === "admin") {
+      try {
+        await loadAdmin();
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "리그 운영 정보를 불러오지 못했습니다.");
       }
     }
   }
@@ -1010,7 +1596,55 @@ function LeagueDialog({
     }
   }
 
+  async function updateAnalysisModel(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAnalysisModelSaving(true);
+    setError("");
+    setLeagueNotice("");
+    try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 20_000);
+      const response = await fetch("/api/admin/analysis/model", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: analysisModelDraft }),
+        signal: controller.signal,
+      });
+      window.clearTimeout(timeout);
+      const payload = (await response.json()) as { analysisModel?: AdminGameOverview["analysisModel"] & { updatedAt?: string }; error?: string };
+      if (!response.ok || !payload.analysisModel) throw new Error(payload.error || "AI 모델 설정을 저장하지 못했습니다.");
+      setAdmin((current) => current ? { ...current, analysisModel: payload.analysisModel! } : current);
+      setAnalysisModelDraft(payload.analysisModel.selectedModel);
+      setLeagueNotice(`AI 심층분석 모델을 ${payload.analysisModel.selectedModel}(으)로 변경했습니다.`);
+    } catch (adminError) {
+      setError(adminError instanceof Error ? adminError.message : "AI 모델 설정을 저장하지 못했습니다.");
+    } finally {
+      setAnalysisModelSaving(false);
+    }
+  }
+
+  async function decideAccessRequest(id: string, status: "approved" | "rejected") {
+    setAccessRequestSavingId(id);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/access-requests", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, status }),
+      });
+      const payload = await response.json() as { request?: AccessRequest; error?: string };
+      if (!response.ok || !payload.request) throw new Error(payload.error || "접근 요청을 처리하지 못했습니다.");
+      setAccessRequests((current) => current.map((request) => request.id === id ? payload.request! : request));
+      setLeagueNotice(status === "approved" ? "접근 요청을 승인했습니다." : "접근 요청을 거절했습니다.");
+    } catch (accessError) {
+      setError(accessError instanceof Error ? accessError.message : "접근 요청을 처리하지 못했습니다.");
+    } finally {
+      setAccessRequestSavingId(null);
+    }
+  }
+
   const availableCashKrw = Math.max(0, Number(dashboard?.portfolio.cashKrw ?? game?.portfolio?.cashKrw ?? 0));
+  const visibleResearchNotes = research?.notes.slice(0, researchVisibleCount) ?? [];
   const estimatedUnitKrw = ticker
     ? ticker.price * (ticker.currency === "USD" ? ticker.exchangeRate ?? 0 : 1)
     : 0;
@@ -1067,7 +1701,8 @@ function LeagueDialog({
               <button type="button" role="tab" aria-selected={leagueTab === "portfolio"} className={leagueTab === "portfolio" ? "active" : ""} onClick={() => void selectLeagueTab("portfolio")}>내 투자</button>
               <button type="button" role="tab" aria-selected={leagueTab === "ranking"} className={leagueTab === "ranking" ? "active" : ""} onClick={() => void selectLeagueTab("ranking")}>순위</button>
               <button type="button" role="tab" aria-selected={leagueTab === "activity"} className={leagueTab === "activity" ? "active" : ""} onClick={() => void selectLeagueTab("activity")}>활동</button>
-              {admin && <button type="button" role="tab" aria-selected={leagueTab === "admin"} className={`admin-tab${leagueTab === "admin" ? " active" : ""}`} onClick={() => void selectLeagueTab("admin")}>운영</button>}
+              <button type="button" role="tab" aria-selected={leagueTab === "research"} className={leagueTab === "research" ? "active" : ""} onClick={() => void selectLeagueTab("research")}>분석 노트</button>
+              {game.isAdmin && <button type="button" role="tab" aria-selected={leagueTab === "admin"} className={`admin-tab${leagueTab === "admin" ? " active" : ""}`} onClick={() => void selectLeagueTab("admin")}>운영</button>}
             </div>
 
             {leagueTab === "portfolio" && <>
@@ -1143,7 +1778,7 @@ function LeagueDialog({
                   {dashboard.holdings.map((holding) => (
                     <button type="button" key={`${holding.market}:${holding.symbol}`} onClick={() => onOpenChart(leagueSecurityTicker({ ...holding, nativePrice: holding.lastNativePrice }))} aria-label={`${holding.securityName} 차트 보기`}>
                       <div><strong>{holding.securityName}</strong><small>{holding.symbol} · {holding.market} · {holding.quantity.toLocaleString("ko-KR")}주</small></div>
-                      <div><strong>{formatKrwAmount(holding.marketValueKrw)}</strong><small className={Number(holding.unrealizedPnlKrw) >= 0 ? "positive" : "negative"}>평가손익 {formatKrwAmount(holding.unrealizedPnlKrw)}</small></div>
+                      <div><strong>{formatKrwAmount(holding.marketValueKrw)}</strong><small className={Number(holding.unrealizedPnlKrw) >= 0 ? "positive" : "negative"}>평가손익 {formatKrwAmount(holding.unrealizedPnlKrw)}{holdingReturnPct(holding) === null ? "" : ` · ${holdingReturnPct(holding)! >= 0 ? "+" : ""}${holdingReturnPct(holding)!.toFixed(2)}%`}</small></div>
                     </button>
                   ))}
                 </div>
@@ -1188,9 +1823,9 @@ function LeagueDialog({
                 {selectedPlayer && (
                   <div className="league-player-detail">
                     <div className="league-player-detail-head"><div><small>#{selectedPlayer.rank}</small><strong>{selectedPlayer.nickname}</strong></div><button type="button" onClick={() => setSelectedPlayer(null)} aria-label="참가자 상세 닫기">×</button></div>
-                    <div className="league-player-detail-metrics"><span>수익률 <b className={Number(selectedPlayer.totalReturnPct) >= 0 ? "positive" : "negative"}>{Number(selectedPlayer.totalReturnPct) >= 0 ? "+" : ""}{Number(selectedPlayer.totalReturnPct).toFixed(2)}%</b></span><span>현금비중 <b>{Number(selectedPlayer.cashRatioPct).toFixed(1)}%</b></span></div>
+                    <div className="league-player-detail-metrics"><span>수익률 <b className={Number(selectedPlayer.totalReturnPct) >= 0 ? "positive" : "negative"}>{Number(selectedPlayer.totalReturnPct) >= 0 ? "+" : ""}{Number(selectedPlayer.totalReturnPct).toFixed(2)}%</b></span><span>현금비중 <b>{Number(selectedPlayer.cashRatioPct).toFixed(1)}%</b><small>{formatKrwAmount(selectedPlayer.cashKrw)} ÷ {formatKrwAmount(selectedPlayer.equityKrw)}</small></span></div>
                     <div className="league-holdings">
-                      {selectedPlayer.holdings.length ? selectedPlayer.holdings.map((holding) => <button type="button" key={`${holding.market}:${holding.symbol}`} onClick={() => onOpenChart(leagueSecurityTicker({ ...holding, nativePrice: holding.lastNativePrice }))} aria-label={`${holding.securityName} 차트 보기`}><div><strong>{holding.securityName}</strong><small>{holding.symbol} · {holding.market} · {holding.quantity.toLocaleString("ko-KR")}주</small></div><div><strong>{formatKrwAmount(holding.marketValueKrw)}</strong><small className={Number(holding.unrealizedPnlKrw) >= 0 ? "positive" : "negative"}>평가손익 {formatKrwAmount(holding.unrealizedPnlKrw)}</small></div></button>) : <p className="league-empty-copy">보유종목이 없습니다.</p>}
+                      {selectedPlayer.holdings.length ? selectedPlayer.holdings.map((holding) => <button type="button" key={`${holding.market}:${holding.symbol}`} onClick={() => onOpenChart(leagueSecurityTicker({ ...holding, nativePrice: holding.lastNativePrice }))} aria-label={`${holding.securityName} 차트 보기`}><div><strong>{holding.securityName}</strong><small>{holding.symbol} · {holding.market} · {holding.quantity.toLocaleString("ko-KR")}주</small></div><div><strong>{formatKrwAmount(holding.marketValueKrw)}</strong><small className={Number(holding.unrealizedPnlKrw) >= 0 ? "positive" : "negative"}>평가손익 {formatKrwAmount(holding.unrealizedPnlKrw)}{holdingReturnPct(holding) === null ? "" : ` · ${holdingReturnPct(holding)! >= 0 ? "+" : ""}${holdingReturnPct(holding)!.toFixed(2)}%`}</small></div></button>) : <p className="league-empty-copy">보유종목이 없습니다.</p>}
                     </div>
                     {!selectedPlayer.activityHidden && selectedPlayer.recentTrades.length > 0 && <div className="league-player-trades"><strong>최근 매매</strong>{selectedPlayer.recentTrades.map((activity) => <button type="button" key={activity.id} onClick={() => onOpenChart(leagueSecurityTicker(activity))}><span className={activity.side}>{activity.side === "buy" ? "매수" : "매도"}</span><div><b>{activity.securityName}</b><small>{activity.quantity.toLocaleString("ko-KR")}주 · {new Date(activity.executedAt).toLocaleString("ko-KR")}</small>{activity.tradeNote && <q>{activity.tradeNote}</q>}</div></button>)}</div>}
                     {selectedPlayer.activityHidden && <p className="league-snapshot-time">이 참가자는 매매 활동 피드를 비공개로 설정했습니다.</p>}
@@ -1207,9 +1842,58 @@ function LeagueDialog({
               </div>
             )}
 
-            {leagueTab === "admin" && admin && (
+            {leagueTab === "research" && (
+              <div className="league-research-section" role="tabpanel">
+                <div className="league-section-title"><div><span>SHARED RESEARCH</span><strong>공개 분석 노트</strong></div><button type="button" className="league-refresh" disabled={researchLoading} onClick={() => void loadResearch()}>{researchLoading ? "불러오는 중…" : "새로고침"}</button></div>
+                <p className="league-snapshot-time">같은 종목도 분석 시점별로 여러 번 기록할 수 있습니다. 공개 글은 리그 참가자에게만 보이며, 개인 분석은 투자 권유가 아닙니다.</p>
+                <form className="research-note-form" onSubmit={createResearchNote}>
+                  <div className="research-note-form-heading"><div><span>NEW NOTE</span><strong>분석 기록 남기기</strong></div>{ticker && <button type="button" onClick={() => { setResearchTicker(ticker); setResearchQuery(ticker.code); setResearchSearchResults([]); }}>현재 차트 종목 선택</button>}</div>
+                  <label className="research-search-field"><span>종목</span><input value={researchQuery} onChange={(event) => { const value = event.target.value; setResearchQuery(value); setResearchTicker(null); if (!value.trim()) setResearchSearchResults([]); }} placeholder="종목명·티커·초성 검색 (예: ㅅㅅㅈㅈ)" autoComplete="off" /></label>
+                  {researchSearchResults.length > 0 && <div className="research-search-results" role="listbox" aria-label="분석할 종목 선택">{researchSearchResults.map((item) => <button type="button" key={`${item.market}:${item.code}`} onClick={() => { setResearchTicker(item); setResearchQuery(`${item.name} (${item.code})`); setResearchSearchResults([]); }}><strong>{item.name}</strong><small>{item.code} · {item.market} · {item.assetType}</small></button>)}</div>}
+                  {researchTicker && <div className="research-selected-security"><strong>{researchTicker.name}</strong><span>{researchTicker.code} · {researchTicker.market} · {researchTicker.assetType}</span><button type="button" onClick={() => { setResearchTicker(null); setResearchQuery(""); }}>변경</button></div>}
+                  <label className="research-date-field"><span>분석 기준일</span><input required type="date" value={researchAnalysisDate} onChange={(event) => setResearchAnalysisDate(event.target.value)} /></label>
+                  {ticker && <div className="research-chart-attachment">
+                    <div><strong>차트 첨부</strong><small>{researchChartImage ? "현재 차트가 첨부됩니다. 추세선·이평선도 함께 저장됩니다." : "현재 차트를 PNG로 첨부할 수 있습니다."}</small></div>
+                    <div>
+                      {researchChartImage ? <button type="button" onClick={() => setResearchChartImage(null)}>첨부 제거</button> : <button type="button" disabled={researchChartAttaching} onClick={() => {
+                        void (async () => {
+                          setResearchChartAttaching(true);
+                          setError("");
+                          try {
+                            const image = await onCaptureChart();
+                            if (!image) throw new Error("현재 차트를 이미지로 만들지 못했습니다. 차트가 표시된 뒤 다시 시도해 주세요.");
+                            if (image.size > 3 * 1024 * 1024) throw new Error("현재 차트 이미지가 너무 큽니다. 표시 봉 수를 줄인 뒤 다시 시도해 주세요.");
+                            setResearchChartImage(image);
+                            if (!researchTicker) {
+                              setResearchTicker(ticker);
+                              setResearchQuery(`${ticker.name} (${ticker.code})`);
+                            }
+                          } catch (attachmentError) {
+                            setError(attachmentError instanceof Error ? attachmentError.message : "차트 첨부를 준비하지 못했습니다.");
+                          } finally {
+                            setResearchChartAttaching(false);
+                          }
+                        })();
+                      }}>{researchChartAttaching ? "준비 중…" : "현재 차트 첨부"}</button>}
+                    </div>
+                  </div>}
+                  <label className="research-body-field"><span>분석 메모 <small>Markdown 지원 · 최대 10,000자</small></span><textarea required rows={12} maxLength={10000} value={researchNoteDraft} onChange={(event) => setResearchNoteDraft(event.target.value)} placeholder={"## 핵심 관점\n\n- 주목한 이유\n- 확인할 위험\n\n| 항목 | 내용 |\n| --- | --- |\n| 촉매 | 실적 발표 |"} /><small>{Array.from(researchNoteDraft).length.toLocaleString("ko-KR")} / 10,000자 · HTML은 표시되지 않습니다.</small></label>
+                  <button className="research-publish-button" type="submit" disabled={!researchTicker || !researchNoteDraft.trim() || researchSaving}>{researchSaving ? "공개 중…" : "리그에 분석 노트 공개"}</button>
+                </form>
+                {researchLoading && !research ? <div className="league-inline-loading">공개 분석 노트를 불러오는 중…</div> : research?.notes.length ? <><p className="research-feed-count">전체 {research.total.toLocaleString("ko-KR")}개 · 최근 {Math.min(researchVisibleCount, research.notes.length).toLocaleString("ko-KR")}개 표시 중</p><div className="research-note-list">{visibleResearchNotes.map((note) => { const expanded = expandedResearchNoteIds.has(note.id); return <article key={note.id} className="research-note-card"><header><div><strong>{note.nickname}{note.isMine ? " · 나" : ""}</strong><button type="button" onClick={() => onOpenChart(leagueSecurityTicker(note))}>{note.securityName} <small>{note.symbol} · 차트 →</small></button><small>분석 기준일 {note.analysisDate} · 작성 {new Date(note.createdAt).toLocaleString("ko-KR")}</small></div><div><span>{note.assetType === "ETF" ? "ETF" : note.market}</span>{note.isMine && <button type="button" className="research-delete-button" disabled={researchSaving} onClick={() => void deleteResearchNote(note.id)}>삭제</button>}</div></header>{note.chartImageUrl && <a className="research-chart-image" href={note.chartImageUrl} target="_blank" rel="noreferrer"><img src={note.chartImageUrl} alt={`${note.securityName} 분석 차트`} /></a>}<ResearchNoteBody note={note.researchNote} expanded={expanded} />{note.researchNote && <button type="button" className="research-expand-button" aria-expanded={expanded} onClick={() => setExpandedResearchNoteIds((current) => { const next = new Set(current); if (next.has(note.id)) next.delete(note.id); else next.add(note.id); return next; })}>{expanded ? "접기" : "전문 보기"}</button>}</article>; })}</div>{researchVisibleCount < research.notes.length && <button type="button" className="research-load-more" onClick={() => setResearchVisibleCount((current) => current + RESEARCH_FEED_STEP)}>분석 노트 5개 더 보기</button>}</> : <p className="league-empty-copy">아직 공개된 분석 노트가 없습니다.</p>}
+                {research?.nextCursor && researchVisibleCount >= research.notes.length && <button type="button" className="research-load-more" disabled={researchLoading} onClick={() => { const cursor = research.nextCursor; if (cursor) void loadResearch(cursor); }}>{researchLoading ? "불러오는 중…" : "이전 분석 20개 불러오기"}</button>}
+              </div>
+            )}
+
+            {leagueTab === "admin" && (
               <div className="league-admin-section" role="tabpanel">
-                <div className="league-section-title"><div><span>LEAGUE CONTROL</span><strong>시즌 운영</strong></div><em>DB admin 역할 전용</em></div>
+                <AccessRequestAdminSection requests={accessRequests} savingId={accessRequestSavingId} onDecide={(id, status) => void decideAccessRequest(id, status)} />
+                {admin && <><div className="league-section-title"><div><span>LEAGUE CONTROL</span><strong>시즌 운영</strong></div><em>DB admin 역할 전용</em></div>
+                <form className="league-admin-model" onSubmit={updateAnalysisModel}>
+                  <div><span>AI ANALYSIS</span><strong>심층분석 모델</strong><small>OpenRouter의 구조화 출력·웹 검색을 지원하는 모델 ID를 입력하세요.</small></div>
+                  <label><span>현재 모델</span><input required list="analysis-model-suggestions" value={analysisModelDraft} onChange={(event) => setAnalysisModelDraft(event.target.value)} placeholder="provider/model" /><datalist id="analysis-model-suggestions">{admin.analysisModel.suggestions.map((model) => <option value={model} key={model} />)}</datalist></label>
+                  <button type="submit" disabled={analysisModelSaving || !analysisModelDraft.trim()}>{analysisModelSaving ? "저장 중…" : "모델 적용"}</button>
+                </form>
                 <div className="league-admin-seasons">
                   {admin.seasons.map((season) => <article key={season.id}><div><strong>{season.name}</strong><small>{season.slug} · 규칙 v{season.ruleVersion}</small></div><div><span className={season.status}>{season.status}</span><small>{season.participantCount}명</small></div></article>)}
                 </div>
@@ -1224,7 +1908,7 @@ function LeagueDialog({
                   <button type="submit" disabled={submitting}>{submitting ? "저장 중…" : "시즌 만들기"}</button>
                   <small>시즌 생성은 기존 원장이나 시즌을 초기화하지 않습니다.</small>
                 </form>
-                <div className="league-admin-audit"><strong>최근 감사 기록</strong>{admin.auditEvents.length ? admin.auditEvents.slice(0, 10).map((audit) => <article key={audit.id}><div><span>{audit.action}</span><small>{new Date(audit.createdAt).toLocaleString("ko-KR")}</small></div><code>{audit.requestId}</code></article>) : <p className="league-empty-copy">감사 기록이 없습니다.</p>}</div>
+                <div className="league-admin-audit"><strong>최근 감사 기록</strong>{admin.auditEvents.length ? admin.auditEvents.slice(0, 10).map((audit) => <article key={audit.id}><div><span>{audit.action}</span><small>{new Date(audit.createdAt).toLocaleString("ko-KR")}</small></div><code>{audit.requestId}</code></article>) : <p className="league-empty-copy">감사 기록이 없습니다.</p>}</div></>}
               </div>
             )}
             {error && <p className="league-error" role="alert">{error}</p>}
@@ -1268,6 +1952,7 @@ function LeagueDialog({
             <button className="league-submit" type="submit" disabled={submitting || !acceptedRules}>
               {submitting ? "참가 처리 중…" : "1억 받고 리그 참가"}
             </button>
+            {game?.isAdmin && admin && <AccessRequestAdminSection requests={accessRequests} savingId={accessRequestSavingId} onDecide={(id, status) => void decideAccessRequest(id, status)} />}
           </form>
         )}
 
@@ -1280,13 +1965,14 @@ function LeagueDialog({
 function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [region, setRegion] = useState<Region>("kr");
   const [timeframe, setTimeframe] = useState<ScreeningTimeframe>("weekly");
-  const [maPeriod, setMaPeriod] = useState<ScreeningMaPeriod>(240);
+  const [maPeriod, setMaPeriod] = useState<ScreeningMaPeriod>(10);
   const [market, setMarket] = useState<MarketFilter>("all");
   const [asset, setAsset] = useState<AssetFilter>("all");
   const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>("weekly");
   const [results, setResults] = useState<Candidate[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [marketWatchId, setMarketWatchId] = useState("kospi");
+  const [workspaceTab, setWorkspaceTab] = useState<"markets" | "candidates">("markets");
   const [directTicker, setDirectTicker] = useState<Ticker | null>(null);
   const [stockQuery, setStockQuery] = useState("");
   const [stockMatches, setStockMatches] = useState<Ticker[]>([]);
@@ -1296,6 +1982,8 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [volumeFilter, setVolumeFilter] = useState("all");
   const [classificationFilters, setClassificationFilters] = useState<ClassificationFilter[]>([]);
   const [range, setRange] = useState(80);
+  const [trendLineMode, setTrendLineMode] = useState(false);
+  const [chartCopyStatus, setChartCopyStatus] = useState<"idle" | "copied" | "unsupported">("idle");
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [priceChanges, setPriceChanges] = useState<PriceChangeSet>(EMPTY_PRICE_CHANGES);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
@@ -1306,12 +1994,18 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [scanning, setScanning] = useState(false);
   const [logoOpen, setLogoOpen] = useState(false);
   const [leagueOpen, setLeagueOpen] = useState(false);
+  const [analysisTicker, setAnalysisTicker] = useState<Ticker | null>(null);
   const [leagueTicker, setLeagueTicker] = useState<Ticker | null>(null);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [favoriteLists, setFavoriteLists] = useState<FavoriteList[] | null>(null);
+  const chartCacheRef = useRef(new Map<string, { expiresAt: number; payload: ChartApiPayload }>());
+  const chartCanvasRef = useRef<ChartCanvasHandle>(null);
   const closeLeague = useCallback(() => setLeagueOpen(false), []);
   const closeFavorites = useCallback(() => setFavoritesOpen(false), []);
   const chartPanelRef = useRef<HTMLElement>(null);
+  const scanToken = useRef(0);
+  const scanInProgressRef = useRef(false);
+  const manualSelectionDuringScanRef = useRef(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failures: 0 });
   const [message, setMessage] = useState("스캔 전 · 주요 시장 흐름을 확인하세요");
 
@@ -1330,7 +2024,23 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   }, []);
 
   const openSavedSecurityChart = useCallback((nextTicker: Ticker) => {
+    if (scanInProgressRef.current) manualSelectionDuringScanRef.current = true;
+    if (nextTicker.assetType === "INDEX" && nextTicker.code.startsWith("MARKET:")) {
+      setMarketWatchId(nextTicker.code.slice("MARKET:".length).toLowerCase());
+      setWorkspaceTab("markets");
+      setDirectTicker(null);
+      setSelectedKey("");
+      setStockQuery("");
+      setStockMatches([]);
+      setLeagueTicker(null);
+      setLeagueOpen(false);
+      window.requestAnimationFrame(() => {
+        chartPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
     setRegion(nextTicker.currency === "USD" ? "us" : "kr");
+    setWorkspaceTab("candidates");
     setDirectTicker(nextTicker);
     setSelectedKey("");
     setStockQuery("");
@@ -1344,7 +2054,9 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   }, []);
 
   const openMarketOverview = useCallback((watchId: string) => {
+    if (scanInProgressRef.current) manualSelectionDuringScanRef.current = true;
     setMarketWatchId(watchId);
+    setWorkspaceTab("markets");
     setDirectTicker(null);
     setSelectedKey("");
     setStockQuery("");
@@ -1364,8 +2076,6 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       document.body.style.overflow = "";
     };
   }, [logoOpen]);
-  const scanToken = useRef(0);
-
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return results.filter((item) => {
@@ -1396,18 +2106,31 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     });
   };
 
-  const selectedCandidate = results.find((item) => candidateKey(item) === selectedKey) ?? filtered[0] ?? results[0];
+  const selectedCandidate = workspaceTab === "candidates"
+    ? results.find((item) => candidateKey(item) === selectedKey) ?? filtered[0] ?? results[0]
+    : undefined;
   const activeMarketWatch = MARKET_WATCHES.find((item) => item.id === marketWatchId) ?? MARKET_WATCHES[0];
-  const isMarketOverview = !directTicker && !selectedCandidate;
+  const isMarketOverview = workspaceTab === "markets" && !directTicker;
   const marketTicker: Ticker = {
-    code: "MARKET",
+    code: `MARKET:${activeMarketWatch.id.toUpperCase()}`,
     name: activeMarketWatch.name,
-    market: "KOSPI",
-    assetType: "STOCK",
+    market: activeMarketWatch.id === "sp500" || activeMarketWatch.id === "dow" || activeMarketWatch.id === "russell" || activeMarketWatch.id === "vix"
+      ? "NYSE"
+      : activeMarketWatch.id === "nasdaq100" || activeMarketWatch.id === "nasdaq" || activeMarketWatch.id === "sox"
+        ? "NASDAQ"
+        : activeMarketWatch.id === "kosdaq"
+          ? "KOSDAQ"
+          : activeMarketWatch.id === "kospi" || activeMarketWatch.id === "usdkrw"
+            ? "KOSPI"
+            : "GLOBAL",
+    assetType: "INDEX",
     marketCap: 0,
     price: 0,
   };
   const selected = directTicker ?? selectedCandidate ?? marketTicker;
+  const trendLineStorageKey = selected
+    ? `line-breaker:trend-lines:v1:${selected.market}:${selected.assetType}:${selected.code}:${chartTimeframe}`
+    : "line-breaker:trend-lines:v1:empty";
   const selectedIsFavorite = !isMarketOverview && (favoriteLists ?? []).some((list) =>
     list.items.some((item) => item.symbol === selected.code && item.market === selected.market),
   );
@@ -1439,6 +2162,28 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     };
   }, [stockQuery]);
 
+  // Favorites and league holdings are persisted with the information needed for
+  // trading, not the full market-universe payload. Hydrate their metadata so the
+  // detail card still shows the market cap (and the correct ETF/ETN badge).
+  useEffect(() => {
+    if (!directTicker || directTicker.marketCap > 0) return;
+    const controller = new AbortController();
+    fetch(`/api/search?query=${encodeURIComponent(directTicker.code)}`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("종목 정보를 불러오지 못했습니다.");
+        return response.json() as Promise<{ tickers?: Ticker[] }>;
+      })
+      .then((payload) => {
+        const matched = payload.tickers?.find((ticker) => ticker.code === directTicker.code && ticker.market === directTicker.market);
+        if (!matched || controller.signal.aborted) return;
+        setDirectTicker((current) => current?.code === directTicker.code && current.market === directTicker.market
+          ? { ...current, ...matched, price: current.price || matched.price }
+          : current);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [directTicker]);
+
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
@@ -1449,30 +2194,44 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     setPriceChanges(EMPTY_PRICE_CHANGES);
     setIndexMembership(null);
     setClassification(null);
+    const cacheKey = isMarketOverview
+      ? `market:${activeMarketWatch.id}:${chartTimeframe}`
+      : `${selected.market}:${selected.assetType}:${selected.code}:${chartTimeframe}`;
+    const applyChartPayload = (payload: ChartApiPayload) => {
+      setChart(payload.points);
+      setPriceChanges(payload.changes ?? EMPTY_PRICE_CHANGES);
+      setExchangeRate(payload.exchangeRate ?? selected.exchangeRate ?? null);
+      setIndexMembership(payload.isNasdaq100 ?? selected.isNasdaq100 ?? null);
+      setClassification(payload.classification ?? (selected.sector ? { sector: selected.sector, industry: selected.industry, themes: selected.themes } : null));
+      const latest = payload.points.at(-1);
+      if (latest) {
+        setLatestPrices((current) =>
+          current[selected.code] === latest.close
+            ? current
+            : { ...current, [selected.code]: latest.close },
+        );
+      }
+    };
+    const cached = chartCacheRef.current.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      applyChartPayload(cached.payload);
+      setChartLoading(false);
+      return () => controller.abort();
+    }
     const endpoint = isMarketOverview
       ? `/api/market-chart?id=${encodeURIComponent(activeMarketWatch.id)}&timeframe=${chartTimeframe}`
-      : `/api/chart?code=${selected.code}&name=${encodeURIComponent(selected.name)}&market=${selected.market}&timeframe=${chartTimeframe}`;
+      : `/api/chart?code=${selected.code}&name=${encodeURIComponent(selected.name)}&market=${selected.market}&asset=${selected.assetType}&timeframe=${chartTimeframe}`;
     fetch(endpoint, {
       signal: controller.signal,
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("차트를 불러오지 못했습니다.");
-        return response.json() as Promise<{ points: ChartPoint[]; changes?: PriceChangeSet; exchangeRate?: number; isNasdaq100?: boolean; classification?: SecurityClassification }>;
+        return response.json() as Promise<ChartApiPayload>;
       })
       .then((payload) => {
-        setChart(payload.points);
-        setPriceChanges(payload.changes ?? EMPTY_PRICE_CHANGES);
-        setExchangeRate(payload.exchangeRate ?? selected.exchangeRate ?? null);
-        setIndexMembership(payload.isNasdaq100 ?? selected.isNasdaq100 ?? null);
-        setClassification(payload.classification ?? (selected.sector ? { sector: selected.sector, industry: selected.industry, themes: selected.themes } : null));
-        const latest = payload.points.at(-1);
-        if (latest) {
-          setLatestPrices((current) =>
-            current[selected.code] === latest.close
-              ? current
-              : { ...current, [selected.code]: latest.close },
-          );
-        }
+        if (chartCacheRef.current.size >= 40) chartCacheRef.current.delete(chartCacheRef.current.keys().next().value!);
+        chartCacheRef.current.set(cacheKey, { payload, expiresAt: Date.now() + 2 * 60_000 });
+        applyChartPayload(payload);
       })
       .catch((error) => {
         if (error instanceof Error && error.name !== "AbortError") setMessage(error.message);
@@ -1483,11 +2242,14 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     return () => controller.abort();
   // `selected` includes a synthetic market object; the stable identifiers above define the fetch boundary.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.code, chartTimeframe, isMarketOverview, activeMarketWatch.id]);
+  }, [selected?.code, selected?.market, selected?.assetType, chartTimeframe, isMarketOverview, activeMarketWatch.id]);
 
   async function runFullScan() {
     const token = ++scanToken.current;
+    scanInProgressRef.current = true;
+    manualSelectionDuringScanRef.current = false;
     setDirectTicker(null);
+    setWorkspaceTab("candidates");
     setScanning(true);
     setResults([]);
     setClassificationFilters([]);
@@ -1502,7 +2264,14 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       const timeframeLabel = timeframe === "both" ? "주봉·월봉 AND" : timeframe === "weekly" ? "주봉" : "월봉";
       const maLabel = maPeriod === "both" ? "10·240이평 AND" : `${maPeriod}이평`;
       const conditionCount = (timeframe === "both" ? 2 : 1) * (maPeriod === "both" ? 2 : 1);
-      setMessage(`${tickers.length.toLocaleString("ko-KR")}종목 · ${timeframeLabel} · ${maLabel} 분석 중${region === "us" ? " · 거래소별 시총 상위 1,000 보통주" : ""}`);
+      const universeLabel = region !== "us"
+        ? ""
+        : asset === "etp"
+          ? " · 주요 고유동성 ETF"
+          : asset === "all"
+            ? " · 상위 보통주 + 주요 고유동성 ETF"
+            : " · 거래소별 시총 상위 1,000 보통주";
+      setMessage(`${tickers.length.toLocaleString("ko-KR")}종목 · ${timeframeLabel} · ${maLabel} 분석 중${universeLabel}`);
       const batches: Ticker[][] = [];
       const batchSize = conditionCount >= 4 ? 8 : conditionCount === 2 ? 12 : 24;
       for (let index = 0; index < tickers.length; index += batchSize) batches.push(tickers.slice(index, index + batchSize));
@@ -1542,7 +2311,9 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       if (scanToken.current !== token) return;
       const sorted = matches.sort(compareCandidates);
       setResults(sorted);
-      if (sorted[0]) setSelectedKey(candidateKey(sorted[0]));
+      if (sorted[0]) {
+        if (!manualSelectionDuringScanRef.current) setSelectedKey(candidateKey(sorted[0]));
+      } else setWorkspaceTab("markets");
       const uniqueStocks = new Set(sorted.map((item) => item.code)).size;
       const usesAndCondition = timeframe === "both" || maPeriod === "both";
       const completedConditionLabel = [
@@ -1557,12 +2328,16 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "스크리닝에 실패했습니다.");
     } finally {
-      if (scanToken.current === token) setScanning(false);
+      if (scanToken.current === token) {
+        scanInProgressRef.current = false;
+        setScanning(false);
+      }
     }
   }
 
   function cancelScan() {
     scanToken.current += 1;
+    scanInProgressRef.current = false;
     setScanning(false);
     setMessage("스크리닝을 중단했습니다.");
   }
@@ -1706,7 +2481,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                 }}
                 aria-label="전체 종목 검색"
                 autoComplete="off"
-                placeholder="전체 종목명 또는 코드 검색"
+                placeholder="종목명·코드·초성 검색 (예: ㅅㅅㅈㅈ)"
               />
               {stockQuery.trim() && stockSearching && <small>검색 중</small>}
             </label>
@@ -1719,6 +2494,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                     role="option"
                     aria-selected={false}
                     onClick={() => {
+                      if (scanInProgressRef.current) manualSelectionDuringScanRef.current = true;
                       setDirectTicker(ticker);
                       setStockQuery("");
                       setStockMatches([]);
@@ -1728,7 +2504,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                       <strong>{ticker.name}</strong>
                       <small>{ticker.code} · {ticker.market} · {ticker.assetType === "STOCK" ? "주식" : ticker.assetType}</small>
                     </span>
-                    <em>{ticker.currency === "USD" ? formatUsd(ticker.price) : `${formatPrice(ticker.price)}원`}</em>
+                    <em>{ticker.price > 0 ? ticker.currency === "USD" ? formatUsd(ticker.price) : `${formatPrice(ticker.price)}원` : "차트에서 최신가 확인"}</em>
                   </button>
                 ))}
                 {!stockSearching && !stockMatches.length && <p>일치하는 종목이 없습니다.</p>}
@@ -1736,14 +2512,10 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
             )}
           </div>
           <button className="favorites-entry-button" type="button" onClick={() => setFavoritesOpen(true)}><span aria-hidden="true">★</span> 즐겨찾기</button>
-          <div className="market-clock">
-            <span className="live-dot" />
-            <span>실시간 데이터 연결</span>
-            <span className="clock-separator">KST</span>
-          </div>
-          <button className="league-entry-button" type="button" onClick={() => { setLeagueTicker(null); setLeagueOpen(true); }}>
+          <button className="league-entry-button" type="button" aria-label="선 넘는 리그 · 데이터 연결됨" onClick={() => { setLeagueTicker(null); setLeagueOpen(true); }}>
             <span>₩</span>
             <strong>선 넘는 리그</strong>
+            <i className="league-entry-status" title="데이터 연결됨" aria-hidden="true" />
           </button>
           <div className="account-menu" title={authUser.email}>
             {authUser.picture ? <img src={authUser.picture} alt="" referrerPolicy="no-referrer" /> : <span>{authUser.name.slice(0, 1)}</span>}
@@ -1794,21 +2566,25 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
             ))}
           </div>
         </div>
-        <label className="select-field">
+        {(region === "kr" || asset !== "etp") && <label className="select-field">
           <span>시장</span>
           <select value={market} onChange={(event) => setMarket(event.target.value as MarketFilter)}>
             <option value="all">전체</option>
             {region === "kr" ? <><option value="kospi">KOSPI</option><option value="kosdaq">KOSDAQ</option></> : <><option value="nasdaq">NASDAQ</option><option value="nyse">NYSE</option><option value="amex">AMEX</option></>}
           </select>
-        </label>
-        {region === "kr" && <label className="select-field asset-select">
+        </label>}
+        <label className="select-field asset-select">
           <span>종목 유형</span>
-          <select value={asset} onChange={(event) => setAsset(event.target.value as AssetFilter)}>
+          <select value={asset} onChange={(event) => {
+            const nextAsset = event.target.value as AssetFilter;
+            setAsset(nextAsset);
+            if (region === "us" && nextAsset === "etp") setMarket("all");
+          }}>
             <option value="all">전체</option>
             <option value="stock">일반주식</option>
-            <option value="etp">ETF·ETN</option>
+            <option value="etp">{region === "us" ? "주요 ETF" : "ETF·ETN"}</option>
           </select>
-        </label>}
+        </label>
         <div className="scan-action">
           <button className="primary-button" onClick={runFullScan} disabled={scanning}>
             {scanning ? "분석 중…" : "전 종목 새로 스캔"}
@@ -1840,12 +2616,16 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
         <aside className="candidate-panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">{hasScreenResults ? "BREAKOUT LIST" : "MARKET PULSE"}</p>
-              <h2>{hasScreenResults ? "돌파 후보" : "주요 시장"}</h2>
+              <p className="eyebrow">{workspaceTab === "candidates" ? "BREAKOUT LIST" : "MARKET PULSE"}</p>
+              <h2>{workspaceTab === "candidates" ? "돌파 후보" : "주요 시장"}</h2>
             </div>
-            <span className="count-pill">{hasScreenResults ? filtered.length : MARKET_WATCHES.length}</span>
+            <span className="count-pill">{workspaceTab === "candidates" ? filtered.length : MARKET_WATCHES.length}</span>
           </div>
-          {hasScreenResults ? <>
+          <div className="workspace-tabs" role="tablist" aria-label="주요 지수와 돌파 후보 전환">
+            <button type="button" role="tab" aria-selected={workspaceTab === "markets"} className={workspaceTab === "markets" ? "active" : ""} onClick={() => setWorkspaceTab("markets")}>주요 지수</button>
+            <button type="button" role="tab" aria-selected={workspaceTab === "candidates"} className={workspaceTab === "candidates" ? "active" : ""} disabled={!hasScreenResults} onClick={() => setWorkspaceTab("candidates")}>돌파 후보{hasScreenResults ? ` ${filtered.length}` : ""}</button>
+          </div>
+          {workspaceTab === "candidates" && hasScreenResults ? <>
           <label className="search-box">
             <span>⌕</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="종목명 또는 코드" />
@@ -1896,6 +2676,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                 key={candidateKey(item)}
                 className={`candidate-row ${!directTicker && selectedCandidate && candidateKey(selectedCandidate) === candidateKey(item) ? "selected" : ""}`}
                 onClick={() => {
+                  if (scanInProgressRef.current) manualSelectionDuringScanRef.current = true;
                   setDirectTicker(null);
                   setSelectedKey(candidateKey(item));
                   if (!item.matchedTimeframes?.length) setChartTimeframe(item.timeframe);
@@ -1977,18 +2758,25 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
           </div>
           </> : (
             <div className="market-watch-list" aria-label="주요 시장 빠른 선택">
-              <p>스크리닝 전에는 주요 시장 흐름을 먼저 확인하세요.</p>
-              {MARKET_WATCHES.map((watch) => (
-                <button
-                  key={watch.id}
-                  type="button"
-                  className={watch.id === activeMarketWatch.id ? "active" : ""}
-                  onClick={() => openMarketOverview(watch.id)}
-                >
-                  <span>{watch.name}</span>
-                  <small>{watch.shortName}</small>
-                </button>
-              ))}
+              <p>주요 지수의 흐름을 확인하고, 필요하면 돌파 후보 탭으로 전환하세요.</p>
+              {[
+                ["korea", "국내 시장"],
+                ["global-index", "글로벌 주요 지수"],
+                ["global-indicator", "글로벌 지표"],
+              ].map(([group, label]) => {
+                const watches = MARKET_WATCHES.filter((watch) => watch.group === group);
+                return <div key={group} className="market-watch-group"><strong>{label}</strong>{watches.map((watch) => (
+                  <button
+                    key={watch.id}
+                    type="button"
+                    className={watch.id === activeMarketWatch.id ? "active" : ""}
+                    onClick={() => openMarketOverview(watch.id)}
+                  >
+                    <span>{watch.name}</span>
+                    <small>{watch.shortName}</small>
+                  </button>
+                ))}</div>;
+              })}
             </div>
           )}
         </aside>
@@ -2025,8 +2813,8 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                   <p>
                     {chartTimeframeLabel} · {isMarketOverview ? "시장 흐름" : `MA10 ${isMa10Breakout ? "상향돌파" : detailCurrentRelation10 || "계산 중"} · MA240 ${isMa240Breakout ? "상향돌파" : detailCurrentRelation240 || "계산 중"}`}
                   </p>
-                  {!isMarketOverview && (
-                    <div className="security-quick-actions">
+                  <div className="security-quick-actions">
+                    {!isMarketOverview && <>
                       <button
                         className={`favorite-security-button${selectedIsFavorite ? " saved" : ""}`}
                         type="button"
@@ -2051,14 +2839,31 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                       >
                         <span>₩</span> 모의투자
                       </button>}
+                      <button
+                        className="stock-analysis-button"
+                        type="button"
+                        onClick={() => setAnalysisTicker({ ...selected, price: detailCurrentClose, exchangeRate: appliedExchangeRate ?? undefined })}
+                      >
+                        <span>AI</span> 심층분석
+                      </button>
+                    </>}
+                    {isMarketOverview && <button
+                      className="stock-analysis-button"
+                      type="button"
+                      onClick={() => {
+                        setLeagueTicker({ ...selected, price: detailCurrentClose, exchangeRate: appliedExchangeRate ?? undefined });
+                        setLeagueOpen(true);
+                      }}
+                    >
+                      <span>✎</span> 리그 노트
+                    </button>}
                     </div>
-                  )}
                 </div>
                 <div className="security-price">
                   <small>현재가</small>
                   <div>
-                    <strong>{isUsdSecurity ? formatUsd(detailCurrentClose) : formatPrice(detailCurrentClose)}</strong>
-                    {!isUsdSecurity && <span>{priceUnit}</span>}
+                    <strong>{isMarketOverview ? formatMarketWatchPrice(detailCurrentClose, activeMarketWatch.unit) : isUsdSecurity ? formatUsd(detailCurrentClose) : formatPrice(detailCurrentClose)}</strong>
+                    {!(isUsdSecurity || (isMarketOverview && (activeMarketWatch.unit === "USD" || activeMarketWatch.unit === "%"))) && <span>{priceUnit}</span>}
                   </div>
                   {isUsdSecurity && appliedExchangeRate && <small className="krw-current-price">약 {formatPrice(detailCurrentClose * appliedExchangeRate)}원 <em>USD/KRW {appliedExchangeRate.toFixed(2)}</em></small>}
                   <small className="current-price-change" aria-label="기간별 현재가 변동">
@@ -2116,6 +2921,29 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                         </button>
                       ))}
                     </div>
+                    <div className="chart-drawing-actions" aria-label="차트 도구">
+                      <button
+                        type="button"
+                        className={trendLineMode ? "active" : ""}
+                        aria-pressed={trendLineMode}
+                        onClick={() => { setTrendLineMode((current) => !current); setChartCopyStatus("idle"); }}
+                      >
+                        <span aria-hidden="true">╱</span> {trendLineMode ? "추세선 종료" : "추세선"}
+                      </button>
+                      <button type="button" onClick={() => chartCanvasRef.current?.undoTrendLine()} title="마지막 추세선 취소">↶</button>
+                      <button type="button" onClick={() => chartCanvasRef.current?.clearTrendLines()} title="추세선 전체 삭제">지우기</button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void chartCanvasRef.current?.copyImage().then((copied) => {
+                            setChartCopyStatus(copied ? "copied" : "unsupported");
+                            window.setTimeout(() => setChartCopyStatus("idle"), 2200);
+                          });
+                        }}
+                      >
+                        {chartCopyStatus === "copied" ? "복사됨" : chartCopyStatus === "unsupported" ? "복사 불가" : "이미지 복사"}
+                      </button>
+                    </div>
                     <div className="chart-range-control">
                       <span className="range-side-label">좁게</span>
                       <input
@@ -2132,7 +2960,8 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                     </div>
                   </div>
                 </div>
-                {chartLoading ? <div className="chart-loading">차트를 불러오는 중…</div> : <ChartCanvas points={chart} range={range} onRangeChange={setRange} />}
+                {trendLineMode && !chartLoading && <p className="chart-drawing-guide">시작점을 찍고 단일 클릭으로 선을 이어 그리세요. 마지막 지점을 더블클릭하거나 ‘추세선 종료’를 눌러 완료합니다.</p>}
+                {chartLoading ? <div className="chart-loading">차트를 불러오는 중…</div> : <ChartCanvas ref={chartCanvasRef} points={chart} range={range} onRangeChange={setRange} trendLineMode={trendLineMode} trendLineStorageKey={trendLineStorageKey} exportTitle={`${selected.name} · ${chartTimeframeLabel}`} />}
               </div>
 
               <div className="evidence-grid">
@@ -2164,6 +2993,8 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                   <small className={detailVolumeTone}>{detailVolumeStatus} {signed(detailVolumeChangePct)}</small>
                 </article>
               </div>
+
+              <SecurityResearchNotes key={`${selected.market}:${selected.code}`} ticker={selected} />
             </>
           ) : (
             <div className="chart-empty">스크리닝을 실행해 차트 후보를 불러오세요.</div>
@@ -2181,8 +3012,9 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
         </div>
       )}
 
-      {leagueOpen && <LeagueDialog onClose={closeLeague} onOpenChart={openSavedSecurityChart} ticker={leagueTicker} />}
+      {leagueOpen && <LeagueDialog onClose={closeLeague} onOpenChart={openSavedSecurityChart} onCaptureChart={async () => chartCanvasRef.current?.captureImage() ?? null} ticker={leagueTicker} />}
       {favoritesOpen && <FavoriteDialog currentTicker={isMarketOverview ? null : { ...selected, price: detailCurrentClose, exchangeRate: appliedExchangeRate ?? undefined }} initialLists={favoriteLists} onClose={closeFavorites} onOpenChart={openSavedSecurityChart} onListsChange={setFavoriteLists} />}
+      {analysisTicker && <StockAnalysisDialog ticker={analysisTicker} onClose={() => setAnalysisTicker(null)} />}
 
       <footer>
         <p>현재 봉은 진행 중이므로 신호와 거래량 비교는 마감 전까지 달라질 수 있습니다.</p>

@@ -1,0 +1,1 @@
+ALTER TABLE "league_research_picks" ADD COLUMN "chart_image_url" varchar(2048);

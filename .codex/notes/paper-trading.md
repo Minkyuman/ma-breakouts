@@ -199,6 +199,13 @@ Exit: no P0/P1 defects, production backup verified, season reset tested, and sim
 2. Confirm starting capital (recommended KRW 100 million), season length (recommended four weeks), and ETF exclusion.
 3. Choose the initial game administrator independently from the login allowlist.
 
+## Access approval milestone (2026-08-30)
+
+- Google OAuth sign-in now records a separate access request identified by Google `sub`; it does not create a league participant record.
+- New accounts remain blocked from product APIs until an operator approves the request. The signed pending session can only check its own access status.
+- The existing `AUTH_ALLOWED_EMAILS` list remains a bootstrap immediate-approval path for the current operator; it is no longer the only way to admit new users.
+- An approved administrator can review and approve/reject requests from the league **운영** tab. Decisions create immutable audit events and the requester's email is not included in public product or league responses.
+
 ## 12. Phase 0 implementation record
 
 - 2026-08-28: Supabase selected over Neon/Firebase.
@@ -277,6 +284,18 @@ Exit: no P0/P1 defects, production backup verified, season reset tested, and sim
 - 2026-08-29: Korean listed ETFs are eligible for favorites and simulated whole-share buy/sell orders. ETNs remain favorites-only and cannot be traded in the league; US eligibility remains common stocks for the current provider rollout.
 - ETF orders use the same server-selected quote, decimal KRW settlement, serializable transaction, idempotency, immutable execution/ledger, position projection, and freshness rules as stock orders.
 - League revaluation accepts ETF quotes so an ETF holding cannot block leaderboard refresh. Development verification covers ETF execution, holdings projection, ledger reconciliation, and explicit ETN rejection; a live provider check resolved KODEX 200 as a positive KRW ETF quote.
+
+## 19. Shared research-note implementation record
+
+- 2026-08-30: added season-scoped, participant-only shared research notes. A participant may record any number of dated notes for the same supported stock or ETF; this is a chronological research archive, not a unique watchlist.
+- `league_research_picks` stores server-resolved symbol/name/market/asset type, an optional Markdown note up to 10,000 characters, the user-selected analysis date, and immutable creation time. There is intentionally no per-symbol or per-user uniqueness constraint.
+- `GET/POST/DELETE /api/game/research-notes` requires an active league membership. Public note payloads contain only profile ID, nickname, optional avatar, security metadata, note, and dates; they never include email, Google `sub`, holdings, cash, orders, or trade history. Only the author can delete a note.
+- Note creation resolves the selected security on the server, accepts only stocks and ETFs supported by the application, and uses a 20-per-five-minute write limit to reduce automated flooding without imposing a total-note cap. Reads are paginated at 20 notes.
+- The league dialog now provides a `분석 노트` tab for searching a security, selecting an analysis date, writing Markdown, publishing, browsing the shared feed, and deleting the author’s own entry. Each stock detail view also shows that stock’s public research history.
+- Markdown tables, lists, links, blockquotes, and code blocks render with GitHub-flavored Markdown. Raw HTML is skipped, so pasted HTML cannot execute in the shared feed.
+- `drizzle/0008_woozy_blur.sql` was applied and verified with RLS on Development, then applied through the explicitly approved Production deployment on 2026-08-30. The Production deployment is Ready at the canonical Vercel alias; the unauthenticated research endpoint correctly returns 401.
+- 2026-08-30 follow-up: Production runtime reported the research table missing despite the earlier migration deployment. `drizzle/0009_repair_league_research_picks.sql` is an idempotent repair migration that creates the additive table, RLS, and indexes if absent. The migration command now also checks the table/RLS before a migration-enabled deployment can continue. Production was redeployed after this repair; no participant, portfolio, order, or ledger data was changed.
+- Production’s build-time migration connection subsequently proved incompatible with its transaction-pooler path. `ensureLeagueResearchStorage` is therefore a server-only, authenticated-request fallback: it serializes one idempotent `CREATE TABLE IF NOT EXISTS`/RLS/index setup on the same runtime database connection used for notes. It only touches the additive research table and runs before note list/create/delete operations; trading and ledger tables remain untouched.
 
 ## 11. Out of scope for the first release
 

@@ -15,7 +15,8 @@ test("Phase 1 enrollment is authenticated, transactional, and idempotent", async
   assert.match(meRoute, /getSession\(request\)/);
   assert.match(profileRoute, /getSession\(request\)/);
   assert.match(adminRoute, /getSession\(request\)/);
-  assert.match(gameAdmin, /account\.role !== "admin"/);
+  assert.match(gameAdmin, /account\.role === "admin"/);
+  assert.match(gameAdmin, /isGameAdminEmail\(authUser\.email\)/);
   assert.doesNotMatch(gameAdmin, /AUTH_ALLOWED_EMAILS|@gmail\.com/);
   assert.match(profileRoute, /enrollInActiveSeason/);
   assert.match(game, /isolationLevel:\s*"serializable"/);

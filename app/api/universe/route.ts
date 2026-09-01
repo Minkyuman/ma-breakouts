@@ -17,7 +17,14 @@ export async function GET(request: Request) {
       ? (assetValue as AssetFilter)
       : "all";
     const tickers = region === "us" ? await fetchUsUniverse(market, asset) : await fetchUniverse(market, asset);
-    return NextResponse.json({ tickers, count: tickers.length, market, asset, region, scope: region === "us" ? "거래소별 시가총액 상위 1,000 보통주" : "전 종목" });
+    const scope = region === "us"
+      ? asset === "etp"
+        ? "주요 고유동성 미국 ETF (ETN 제외)"
+        : asset === "all"
+          ? "거래소별 시가총액 상위 1,000 보통주 + 주요 고유동성 미국 ETF"
+          : "거래소별 시가총액 상위 1,000 보통주"
+      : "전 종목";
+    return NextResponse.json({ tickers, count: tickers.length, market, asset, region, scope });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "종목 목록을 불러오지 못했습니다." },

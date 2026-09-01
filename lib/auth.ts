@@ -8,6 +8,7 @@ export type AuthUser = {
   email: string;
   name: string;
   picture?: string;
+  access?: "pending" | "approved" | "rejected";
   exp: number;
 };
 
@@ -64,7 +65,23 @@ export function isEmailAllowed(email: string) {
   const configured = process.env.AUTH_ALLOWED_EMAILS?.split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
-  return !configured?.length || configured.includes(email.trim().toLowerCase());
+  // Legacy bootstrap allow-list: it can grant the first operator immediate
+  // entry, but an absent list must not turn the request workflow into open
+  // access.
+  return Boolean(configured?.includes(email.trim().toLowerCase()));
+}
+
+/**
+ * Game administration is intentionally separate from the sign-in allow-list.
+ * Keeping this in an environment variable makes the initial production admin
+ * bootstrap explicit, without granting every permitted Google account access
+ * to league operations.
+ */
+export function isGameAdminEmail(email: string) {
+  const configured = process.env.GAME_ADMIN_EMAILS?.split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return Boolean(configured?.includes(email.trim().toLowerCase()));
 }
 
 export function authBaseUrl(request: Request) {
@@ -119,6 +136,12 @@ export function clearSessionCookie(request: Request) {
 }
 
 export async function getSession(request: Request): Promise<AuthUser | null> {
+  const user = await getRawSession(request);
+  return user && user.access !== "pending" && user.access !== "rejected" ? user : null;
+}
+
+/** Signed-in session, including a user waiting for an operator decision. */
+export async function getRawSession(request: Request): Promise<AuthUser | null> {
   const secret = process.env.AUTH_SECRET;
   const token = parseCookies(request).get(SESSION_COOKIE);
   if (!secret || !token) return null;

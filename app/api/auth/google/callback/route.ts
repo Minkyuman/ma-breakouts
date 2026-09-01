@@ -2,10 +2,10 @@ import {
   authBaseUrl,
   clearStateCookie,
   createSessionCookie,
-  isEmailAllowed,
   isGoogleAuthConfigured,
   oauthState,
 } from "@/lib/auth";
+import { registerAccessRequest } from "@/lib/access";
 
 type GoogleTokenResponse = { access_token?: string; error?: string };
 type GoogleUserInfo = {
@@ -58,13 +58,16 @@ export async function GET(request: Request) {
     if (!userResponse.ok || !profile.sub || !profile.email || profile.email_verified !== true) {
       return failure(request, "profile");
     }
-    if (!isEmailAllowed(profile.email)) return failure(request, "denied");
-
-    const sessionCookie = await createSessionCookie({
+    const user = {
       sub: profile.sub,
       email: profile.email,
       name: profile.name || profile.email.split("@")[0],
       picture: profile.picture,
+    };
+    const access = await registerAccessRequest(user);
+    const sessionCookie = await createSessionCookie({
+      ...user,
+      access,
     }, request);
     const headers = new Headers({ location: `${authBaseUrl(request)}/` });
     headers.append("set-cookie", sessionCookie);

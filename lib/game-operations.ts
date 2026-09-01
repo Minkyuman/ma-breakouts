@@ -4,7 +4,7 @@ import { getDb } from "@/db";
 import { rateLimitBuckets } from "@/db/schema";
 import type { AuthUser } from "@/lib/auth";
 
-export type RateLimitAction = "game_order" | "league_valuation" | "admin_season_create";
+export type RateLimitAction = "game_order" | "league_valuation" | "league_research_note_write" | "admin_season_create" | "admin_analysis_model_update";
 
 export class GameRateLimitError extends Error {
   constructor(
