@@ -2366,6 +2366,19 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     : selected
       ? (latestPrices[selected.code] ?? selected.price ?? selectedSignal?.close ?? 0)
       : 0;
+  // The league dialog remains open while the chart's latest close and USD/KRW
+  // rate arrive. Keep its estimate in sync instead of freezing the values from
+  // the instant the button was clicked (US ETFs start with a zero list price).
+  const activeLeagueTicker = leagueTicker &&
+    leagueTicker.code === selected.code &&
+    leagueTicker.market === selected.market
+    ? {
+        ...leagueTicker,
+        currency: selected.currency ?? leagueTicker.currency,
+        price: detailCurrentClose > 0 ? detailCurrentClose : leagueTicker.price,
+        exchangeRate: appliedExchangeRate ?? leagueTicker.exchangeRate,
+      }
+    : leagueTicker;
   const detailPreviousMa10 = hasPeriodDetail
     ? previousPeriod!.ma10
     : selectedSignal?.maPeriod === 10
@@ -3010,7 +3023,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
         </div>
       )}
 
-      {leagueOpen && <LeagueDialog onClose={closeLeague} onOpenChart={openSavedSecurityChart} onCaptureChart={async () => chartCanvasRef.current?.captureImage() ?? null} ticker={leagueTicker} />}
+      {leagueOpen && <LeagueDialog onClose={closeLeague} onOpenChart={openSavedSecurityChart} onCaptureChart={async () => chartCanvasRef.current?.captureImage() ?? null} ticker={activeLeagueTicker} />}
       {favoritesOpen && <FavoriteDialog currentTicker={isMarketOverview ? null : { ...selected, price: detailCurrentClose, exchangeRate: appliedExchangeRate ?? undefined }} initialLists={favoriteLists} onClose={closeFavorites} onOpenChart={openSavedSecurityChart} onListsChange={setFavoriteLists} />}
       {analysisTicker && <StockAnalysisDialog ticker={analysisTicker} onClose={() => setAnalysisTicker(null)} />}
 
