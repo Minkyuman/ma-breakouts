@@ -137,7 +137,7 @@ function normalizeIntent(input: Record<string, unknown>) {
   const quantity = Number(input.quantity);
   const clientOrderId = typeof input.clientOrderId === "string" ? input.clientOrderId.trim() : "";
   const tradeNote = normalizeTradeNote(input.tradeNote);
-  const validMarket = ["KOSPI", "KOSDAQ", "NASDAQ", "NYSE", "AMEX"].includes(market);
+  const validMarket = ["KOSPI", "KOSDAQ", "NASDAQ", "NYSE", "AMEX", "US_ETF"].includes(market);
   const validSymbol = /^\d{6}$/u.test(symbol) || /^[A-Z][A-Z0-9.-]{0,15}$/u.test(symbol);
 
   if (
@@ -293,9 +293,7 @@ export async function executeTrade(
   if (
     quote.ticker.code !== intent.symbol ||
     quote.ticker.market !== intent.market ||
-    (quote.ticker.assetType !== "STOCK" && !(
-      quote.ticker.assetType === "ETF" && (intent.market === "KOSPI" || intent.market === "KOSDAQ")
-    )) ||
+    (quote.ticker.assetType !== "STOCK" && quote.ticker.assetType !== "ETF") ||
     !new Decimal(quote.nativePrice).isPositive() ||
     !new Decimal(quote.fxRate).isPositive() ||
     quoteAgeMs < -36 * 60 * 60 * 1000 ||

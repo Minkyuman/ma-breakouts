@@ -717,17 +717,19 @@ export async function fetchTradingQuote(
   const isKoreanMarket = marketValue === "KOSPI" || marketValue === "KOSDAQ";
   const candidates = isKoreanMarket
     ? await fetchUniverse(marketValue.toLowerCase() as MarketFilter, "all")
-    : await fetchUsUniverse(marketValue.toLowerCase() as MarketFilter, "stock");
+    : marketValue === "US_ETF"
+      ? await fetchUsUniverse("all", "etp")
+      : await fetchUsUniverse(marketValue.toLowerCase() as MarketFilter, "stock");
   const ticker = candidates.find(
     (candidate) =>
       candidate.code === symbol &&
       candidate.market === marketValue &&
-      (candidate.assetType === "STOCK" || (isKoreanMarket && candidate.assetType === "ETF")),
+      (candidate.assetType === "STOCK" || candidate.assetType === "ETF"),
   );
   if (!ticker) {
     throw new MarketQuoteError(
       "UNSUPPORTED_SECURITY",
-      "모의투자는 한국 주식·ETF와 미국 보통주를 지원합니다.",
+      "모의투자는 한국·미국 주식과 ETF를 지원합니다.",
     );
   }
 

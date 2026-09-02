@@ -143,9 +143,7 @@ function assertValuationQuote(quote: TradingQuote, symbol: string, market: strin
   if (
     quote.ticker.code !== symbol ||
     quote.ticker.market !== market ||
-    (quote.ticker.assetType !== "STOCK" && !(
-      quote.ticker.assetType === "ETF" && (market === "KOSPI" || market === "KOSDAQ")
-    )) ||
+    (quote.ticker.assetType !== "STOCK" && quote.ticker.assetType !== "ETF") ||
     !new Decimal(quote.nativePrice).isPositive() ||
     !new Decimal(quote.fxRate).isPositive() ||
     quoteAge < -36 * 60 * 60 * 1000 ||

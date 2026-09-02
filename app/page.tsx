@@ -118,9 +118,7 @@ const MARKET_WATCHES: MarketWatch[] = [
 ];
 
 function supportsPaperTrading(ticker: Pick<Ticker, "assetType" | "market">) {
-  return ticker.assetType === "STOCK" || (
-    ticker.assetType === "ETF" && (ticker.market === "KOSPI" || ticker.market === "KOSDAQ")
-  );
+  return ticker.assetType === "STOCK" || ticker.assetType === "ETF";
 }
 
 const number = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
