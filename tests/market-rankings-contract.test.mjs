@@ -37,6 +37,8 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(page, /rankingClassificationFilters/);
   assert.match(page, /toggleRankingClassificationFilter/);
   assert.match(page, /\/api\/market-rankings\/classifications/);
+  assert.match(page, /if \(pendingItems\.length\) \{/);
+  assert.doesNotMatch(page, /region === "us" && pendingItems\.length/);
   assert.match(page, /섹터 정보 없음/);
   assert.match(page, /candidate-classification/);
   assert.match(page, /NASDAQ 100/);

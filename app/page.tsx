@@ -2209,7 +2209,11 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
               : "표시할 시장 순위가 없습니다.");
           }
           const pendingItems = (payload.items ?? []).filter((item) => item.classificationStatus === "pending");
-          if (region === "us" && pendingItems.length) {
+          // The ranking API enriches the first visible rows eagerly. Resolve
+          // the remaining rows in the background for both Korean and US
+          // markets; limiting this to US left Korean rows 21–100 permanently
+          // labelled as pending.
+          if (pendingItems.length) {
             void fetch("/api/market-rankings/classifications", {
               method: "POST",
               headers: { "content-type": "application/json" },
