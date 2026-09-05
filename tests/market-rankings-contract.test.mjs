@@ -28,6 +28,8 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(market, /accumulatedTradingValueRaw/);
   assert.match(market, /fluctuationsRatio/);
   assert.match(page, /MARKET_RANK_METRICS/);
+  assert.match(page, /\{ id: "marketCap", label: "시가총액"[\s\S]*\{ id: "tradingValue", label: "거래대금"/);
+  assert.match(page, /useState<MarketRankMetric>\("marketCap"\)/);
   assert.match(page, /거래대금/);
   assert.match(page, /등락률/);
   assert.match(page, /거래량/);

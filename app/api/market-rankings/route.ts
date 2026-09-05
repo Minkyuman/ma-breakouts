@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     const asset: AssetFilter = ["all", "stock", "etp"].includes(requestedAsset)
       ? (requestedAsset as AssetFilter)
       : "all";
-    const requestedMetric = params.get("metric") ?? "tradingValue";
+    const requestedMetric = params.get("metric") ?? "marketCap";
     const metric: MarketRankMetric = ALLOWED_METRICS.includes(requestedMetric as MarketRankMetric)
       ? (requestedMetric as MarketRankMetric)
       : "tradingValue";

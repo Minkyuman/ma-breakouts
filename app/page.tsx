@@ -365,10 +365,10 @@ type MarketRankingClassificationsPayload = {
 };
 
 const MARKET_RANK_METRICS: Array<{ id: MarketRankMetric; label: string; description: string }> = [
+  { id: "marketCap", label: "시가총액", description: "현재 시가총액" },
   { id: "tradingValue", label: "거래대금", description: "당일 누적 거래대금" },
   { id: "changePct", label: "등락률", description: "당일 등락률" },
   { id: "volume", label: "거래량", description: "당일 누적 거래량" },
-  { id: "marketCap", label: "시가총액", description: "현재 시가총액" },
 ];
 
 const EMPTY_PRICE_CHANGES: PriceChangeSet = { daily: null, weekly: null, monthly: null };
@@ -2130,7 +2130,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [selectedKey, setSelectedKey] = useState("");
   const [marketWatchId, setMarketWatchId] = useState("kospi");
   const [workspaceTab, setWorkspaceTab] = useState<"markets" | "candidates" | "rankings">("markets");
-  const [rankMetric, setRankMetric] = useState<MarketRankMetric>("tradingValue");
+  const [rankMetric, setRankMetric] = useState<MarketRankMetric>("marketCap");
   const [rankedTickers, setRankedTickers] = useState<Ticker[]>([]);
   const [rankingsLoading, setRankingsLoading] = useState(false);
   const [rankingsAsOf, setRankingsAsOf] = useState<string | null>(null);
