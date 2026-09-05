@@ -13,6 +13,7 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(route, /slice\(0, 100\)/);
   assert.match(route, /fetchSecurityClassification/);
   assert.match(route, /enrichRankedItems/);
+  assert.match(route, /Math\.min\(20, items\.length\)/);
   assert.match(market, /tradingValue\?: number/);
   assert.match(market, /accumulatedTradingValueRaw/);
   assert.match(market, /fluctuationsRatio/);

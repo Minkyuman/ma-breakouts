@@ -23,11 +23,12 @@ function numberFor(ticker: Ticker, metric: MarketRankMetric) {
 
 async function enrichRankedItems(items: Ticker[]) {
   const enriched = [...items];
+  const enrichmentCount = Math.min(20, items.length);
   let nextIndex = 0;
-  // A ranking view can contain 100 securities. Limit remote profile requests so
-  // a single browser view does not overwhelm either market-data provider.
-  const workers = Array.from({ length: Math.min(8, items.length) }, async () => {
-    while (nextIndex < items.length) {
+  // A ranking view can contain 100 securities. Enrich the first visible page
+  // only; the complete ranking should not wait on 100 remote profile requests.
+  const workers = Array.from({ length: Math.min(6, enrichmentCount) }, async () => {
+    while (nextIndex < enrichmentCount) {
       const index = nextIndex++;
       const ticker = items[index];
       try {
