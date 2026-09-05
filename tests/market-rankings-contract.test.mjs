@@ -11,6 +11,8 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(route, /getSession\(request\)/);
   assert.match(route, /tradingValue.*changePct.*volume.*marketCap/s);
   assert.match(route, /slice\(0, 100\)/);
+  assert.match(route, /fetchSecurityClassification/);
+  assert.match(route, /enrichRankedItems/);
   assert.match(market, /tradingValue\?: number/);
   assert.match(market, /accumulatedTradingValueRaw/);
   assert.match(market, /fluctuationsRatio/);
@@ -20,4 +22,6 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(page, /거래량/);
   assert.match(page, /시가총액/);
   assert.match(page, /\/api\/market-rankings/);
+  assert.match(page, /candidate-classification/);
+  assert.match(page, /NASDAQ 100/);
 });

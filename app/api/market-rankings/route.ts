@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession, unauthorized } from "@/lib/auth";
 import {
   fetchUniverse,
+  fetchNasdaq100Membership,
+  fetchSecurityClassification,
   fetchUsUniverse,
   type AssetFilter,
   type MarketFilter,
@@ -17,6 +19,30 @@ function numberFor(ticker: Ticker, metric: MarketRankMetric) {
   if (metric === "changePct") return ticker.changePct;
   if (metric === "volume") return ticker.tradingVolume;
   return ticker.marketCap;
+}
+
+async function enrichRankedItems(items: Ticker[]) {
+  const enriched = [...items];
+  let nextIndex = 0;
+  // A ranking view can contain 100 securities. Limit remote profile requests so
+  // a single browser view does not overwhelm either market-data provider.
+  const workers = Array.from({ length: Math.min(8, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      const ticker = items[index];
+      try {
+        const classification = await fetchSecurityClassification(ticker);
+        const isNasdaq100 = ticker.market === "NASDAQ" && ticker.assetType === "STOCK"
+          ? await fetchNasdaq100Membership(ticker.code)
+          : undefined;
+        enriched[index] = { ...ticker, ...classification, isNasdaq100 };
+      } catch {
+        // A missing profile must not hide an otherwise valid market ranking.
+      }
+    }
+  });
+  await Promise.all(workers);
+  return enriched;
 }
 
 export async function GET(request: Request) {
@@ -38,13 +64,14 @@ export async function GET(request: Request) {
       ? (requestedMetric as MarketRankMetric)
       : "tradingValue";
     const tickers = region === "us" ? await fetchUsUniverse(market, asset) : await fetchUniverse(market, asset);
-    const items = tickers
+    const ranked = tickers
       .filter((ticker) => {
         const value = numberFor(ticker, metric);
         return typeof value === "number" && Number.isFinite(value) && value > 0;
       })
       .sort((left, right) => (numberFor(right, metric) ?? -1) - (numberFor(left, metric) ?? -1) || right.marketCap - left.marketCap || left.code.localeCompare(right.code))
       .slice(0, 100);
+    const items = await enrichRankedItems(ranked);
     const asOf = items.find((ticker) => ticker.tradedAt)?.tradedAt ?? null;
     return NextResponse.json({ items, metric, region, market, asset, asOf, unavailable: items.length === 0 });
   } catch (error) {
