@@ -80,6 +80,42 @@ export const accessRequests = pgTable(
   ],
 ).enableRLS();
 
+/** Operator-authored notices shown once to each signed-in user. */
+export const serviceAnnouncements = pgTable(
+  "service_announcements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: varchar("title", { length: 120 }).notNull(),
+    body: text("body").notNull(),
+    isPublished: boolean("is_published").notNull().default(false),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("service_announcements_visible_idx").on(table.isPublished, table.publishedAt),
+    index("service_announcements_created_idx").on(table.createdAt),
+  ],
+).enableRLS();
+
+export const serviceAnnouncementAcknowledgements = pgTable(
+  "service_announcement_acknowledgements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    announcementId: uuid("announcement_id")
+      .notNull()
+      .references(() => serviceAnnouncements.id, { onDelete: "cascade" }),
+    googleSub: text("google_sub").notNull(),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("service_announcement_ack_user_unique").on(table.announcementId, table.googleSub),
+    index("service_announcement_ack_user_idx").on(table.googleSub, table.acknowledgedAt),
+  ],
+).enableRLS();
+
 export const gameProfiles = pgTable(
   "game_profiles",
   {

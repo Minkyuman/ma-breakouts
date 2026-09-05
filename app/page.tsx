@@ -67,6 +67,55 @@ type AccessRequest = {
   decidedAt: string | null;
 };
 
+type ServiceAnnouncement = {
+  id: string;
+  title: string;
+  body: string;
+  publishedAt: string;
+  expiresAt: string | null;
+};
+
+type AdminServiceAnnouncement = ServiceAnnouncement & {
+  isPublished: boolean;
+  createdAt: string;
+};
+
+function LoginAnnouncementDialog() {
+  const [announcements, setAnnouncements] = useState<ServiceAnnouncement[]>([]);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/announcements", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<{ announcements?: ServiceAnnouncement[] }> : null)
+      .then((payload) => {
+        if (payload?.announcements?.length) {
+          setAnnouncements(payload.announcements);
+          setOpen(true);
+        }
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  async function acknowledge() {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/announcements", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: announcements.map((announcement) => announcement.id) }) });
+      if (!response.ok) throw new Error();
+      setOpen(false);
+    } catch {
+      // Keep the notice visible so the user can retry acknowledgement later.
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open || !announcements.length) return null;
+  return <div className="announcement-backdrop" role="presentation"><section className="announcement-dialog" role="dialog" aria-modal="true" aria-labelledby="service-announcement-title"><span>LINE BREAKER NOTICE</span><h2 id="service-announcement-title">공지사항</h2><div className="announcement-list">{announcements.map((announcement) => <article key={announcement.id}><strong>{announcement.title}</strong><time>게시 {new Date(announcement.publishedAt).toLocaleDateString("ko-KR")}{announcement.expiresAt ? ` · ${new Date(announcement.expiresAt).toLocaleDateString("ko-KR")}까지` : ""}</time><p>{announcement.body}</p></article>)}</div><button type="button" disabled={saving} onClick={() => void acknowledge()}>{saving ? "확인 중…" : "확인했습니다"}</button></section></div>;
+}
+
 function AccessRequestAdminSection({ requests, savingId, onDecide }: { requests: AccessRequest[]; savingId: string | null; onDecide: (id: string, status: "approved" | "rejected") => void }) {
   const pendingRequests = requests.filter((request) => request.status === "pending");
   const processedRequests = requests.filter((request) => request.status !== "pending");
@@ -1222,6 +1271,9 @@ function LeagueDialog({
   const [admin, setAdmin] = useState<AdminGameOverview | null>(null);
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [accessRequestSavingId, setAccessRequestSavingId] = useState<string | null>(null);
+  const [announcements, setAnnouncements] = useState<AdminServiceAnnouncement[]>([]);
+  const [announcementSaving, setAnnouncementSaving] = useState(false);
+  const [announcementDraft, setAnnouncementDraft] = useState({ title: "", body: "", expiresAt: "", publishNow: true });
   const [leagueTab, setLeagueTab] = useState<"portfolio" | "ranking" | "activity" | "research" | "admin">("portfolio");
   const [loading, setLoading] = useState(true);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
@@ -1348,9 +1400,10 @@ function LeagueDialog({
   }, []);
 
   const loadAdmin = useCallback(async (signal?: AbortSignal) => {
-    const [response, accessResponse] = await Promise.all([
+    const [response, accessResponse, announcementResponse] = await Promise.all([
       fetch("/api/admin/game/seasons", { signal, cache: "no-store" }),
       fetch("/api/admin/access-requests", { signal, cache: "no-store" }),
+      fetch("/api/admin/announcements", { signal, cache: "no-store" }),
     ]);
     if (accessResponse.status === 403) {
       setAdmin(null);
@@ -1359,6 +1412,9 @@ function LeagueDialog({
     const accessPayload = (await accessResponse.json()) as { requests?: AccessRequest[]; error?: string };
     if (!accessResponse.ok || !accessPayload.requests) throw new Error(accessPayload.error || "접근 요청을 불러오지 못했습니다.");
     setAccessRequests(accessPayload.requests);
+    const announcementPayload = (await announcementResponse.json()) as { announcements?: AdminServiceAnnouncement[]; error?: string };
+    if (!announcementResponse.ok || !announcementPayload.announcements) throw new Error(announcementPayload.error || "공지사항을 불러오지 못했습니다.");
+    setAnnouncements(announcementPayload.announcements);
     const payload = (await response.json()) as { admin?: AdminGameOverview; error?: string };
     if (!response.ok || !payload.admin) {
       setAdmin(null);
@@ -1631,6 +1687,40 @@ function LeagueDialog({
       setError(adminError instanceof Error ? adminError.message : "AI 모델 설정을 저장하지 못했습니다.");
     } finally {
       setAnalysisModelSaving(false);
+    }
+  }
+
+  async function createAnnouncement(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAnnouncementSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/announcements", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...announcementDraft, expiresAt: announcementDraft.expiresAt ? new Date(announcementDraft.expiresAt).toISOString() : null }) });
+      const payload = await response.json() as { announcement?: AdminServiceAnnouncement; error?: string };
+      if (!response.ok || !payload.announcement) throw new Error(payload.error || "공지를 저장하지 못했습니다.");
+      setAnnouncements((current) => [payload.announcement!, ...current]);
+      setAnnouncementDraft({ title: "", body: "", expiresAt: "", publishNow: true });
+      setLeagueNotice(payload.announcement.isPublished ? "공지를 게시했습니다. 다음 로그인부터 사용자에게 표시됩니다." : "공지 초안을 저장했습니다.");
+    } catch (announcementError) {
+      setError(announcementError instanceof Error ? announcementError.message : "공지를 저장하지 못했습니다.");
+    } finally {
+      setAnnouncementSaving(false);
+    }
+  }
+
+  async function setAnnouncementPublication(id: string, publish: boolean) {
+    setAnnouncementSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/announcements", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, publish }) });
+      const payload = await response.json() as { announcement?: AdminServiceAnnouncement; error?: string };
+      if (!response.ok || !payload.announcement) throw new Error(payload.error || "공지 상태를 변경하지 못했습니다.");
+      setAnnouncements((current) => current.map((announcement) => announcement.id === id ? payload.announcement! : announcement));
+      setLeagueNotice(publish ? "공지를 게시했습니다." : "공지 게시를 중지했습니다.");
+    } catch (announcementError) {
+      setError(announcementError instanceof Error ? announcementError.message : "공지 상태를 변경하지 못했습니다.");
+    } finally {
+      setAnnouncementSaving(false);
     }
   }
 
@@ -1910,6 +2000,17 @@ function LeagueDialog({
                   <label><span>현재 모델</span><input required list="analysis-model-suggestions" value={analysisModelDraft} onChange={(event) => setAnalysisModelDraft(event.target.value)} placeholder="provider/model" /><datalist id="analysis-model-suggestions">{admin.analysisModel.suggestions.map((model) => <option value={model} key={model} />)}</datalist></label>
                   <button type="submit" disabled={analysisModelSaving || !analysisModelDraft.trim()}>{analysisModelSaving ? "저장 중…" : "모델 적용"}</button>
                 </form>
+                <section className="league-admin-announcements" aria-label="서비스 공지 관리">
+                  <div className="league-section-title"><div><span>SERVICE NOTICE</span><strong>로그인 공지</strong></div><em>게시 후 사용자에게 한 번 표시</em></div>
+                  <form onSubmit={createAnnouncement}>
+                    <label><span>제목</span><input required minLength={2} maxLength={120} value={announcementDraft.title} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, title: event.target.value }))} placeholder="예: 미국 ETF 모의투자 지원 안내" /></label>
+                    <label className="announcement-body-field"><span>본문</span><textarea required minLength={2} maxLength={3000} rows={4} value={announcementDraft.body} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, body: event.target.value }))} placeholder="사용자에게 전달할 내용을 입력하세요. 줄바꿈도 그대로 표시됩니다." /></label>
+                    <label><span>게시 종료 시각 <small>선택</small></span><input type="datetime-local" value={announcementDraft.expiresAt} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, expiresAt: event.target.value }))} /></label>
+                    <label className="announcement-publish-toggle"><input type="checkbox" checked={announcementDraft.publishNow} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, publishNow: event.target.checked }))} />즉시 게시</label>
+                    <button type="submit" disabled={announcementSaving}>{announcementSaving ? "저장 중…" : announcementDraft.publishNow ? "공지 게시" : "초안 저장"}</button>
+                  </form>
+                  <div className="announcement-admin-list">{announcements.length ? announcements.map((announcement) => <article key={announcement.id}><div><strong>{announcement.title}</strong><small>{announcement.isPublished ? `게시 ${new Date(announcement.publishedAt).toLocaleString("ko-KR")}` : "초안"}{announcement.expiresAt ? ` · 종료 ${new Date(announcement.expiresAt).toLocaleString("ko-KR")}` : ""}</small><p>{announcement.body}</p></div><button type="button" disabled={announcementSaving} onClick={() => void setAnnouncementPublication(announcement.id, !announcement.isPublished)}>{announcement.isPublished ? "게시 중지" : "게시"}</button></article>) : <p className="league-empty-copy">작성한 공지가 없습니다.</p>}</div>
+                </section>
                 <div className="league-admin-seasons">
                   {admin.seasons.map((season) => <article key={season.id}><div><strong>{season.name}</strong><small>{season.slug} · 규칙 v{season.ruleVersion}</small></div><div><span className={season.status}>{season.status}</span><small>{season.participantCount}명</small></div></article>)}
                 </div>
@@ -3044,6 +3145,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       {leagueOpen && <LeagueDialog onClose={closeLeague} onOpenChart={openSavedSecurityChart} onCaptureChart={async () => chartCanvasRef.current?.captureImage() ?? null} ticker={activeLeagueTicker} />}
       {favoritesOpen && <FavoriteDialog currentTicker={isMarketOverview ? null : { ...selected, price: detailCurrentClose, exchangeRate: appliedExchangeRate ?? undefined }} initialLists={favoriteLists} onClose={closeFavorites} onOpenChart={openSavedSecurityChart} onListsChange={setFavoriteLists} />}
       {analysisTicker && <StockAnalysisDialog ticker={analysisTicker} onClose={() => setAnalysisTicker(null)} />}
+      <LoginAnnouncementDialog />
 
       <footer>
         <p>현재 봉은 진행 중이므로 신호와 거래량 비교는 마감 전까지 달라질 수 있습니다.</p>
