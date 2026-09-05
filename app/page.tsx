@@ -3012,7 +3012,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                         {item.sector ? <span className="candidate-sector-tag">{item.sector}</span> : <span className="candidate-sector-tag pending">섹터 확인 중</span>}
                         {item.themes?.slice(0, 2).map((theme) => <span key={theme} className="candidate-theme-tag">{theme}</span>)}
                       </span>
-                      <small>{item.code} · {item.assetType === "STOCK" ? "주식" : item.assetType} · 등락률 <b className={(item.changePct ?? 0) < 0 ? "down" : "up"}>{signed(item.changePct ?? null, 2)}</b></small>
+                      <small><span className="ranking-ticker-filter" role="button" tabIndex={0} title={`${item.code} 티커로 목록 필터`} onClick={(event) => { event.stopPropagation(); setRankingQuery(item.code); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setRankingQuery(item.code); } }}>{item.code}</span> · {item.assetType === "STOCK" ? "주식" : item.assetType} · 등락률 <b className={(item.changePct ?? 0) < 0 ? "down" : "up"}>{signed(item.changePct ?? null, 2)}</b></small>
                     </span>
                     <span className="candidate-metric"><strong>{item.currency === "USD" ? formatUsd(currentPrice) : `${formatPrice(currentPrice)}원`}</strong><small className={rankMetric === "changePct" && (item.changePct ?? 0) < 0 ? "down" : "up"}>{MARKET_RANK_METRICS.find((metric) => metric.id === rankMetric)?.label} {metricValue}</small><small>{rankMetric === "volume" ? `거래대금 ${formatTradingValue(item.tradingValue, item.currency)}` : `거래량 ${formatVolume(item.tradingVolume ?? 0)}`}</small></span>
                   </button>;
