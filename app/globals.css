@@ -1966,6 +1966,8 @@ select:focus-visible {
   background: rgba(234, 236, 230, 0.72);
 }
 
+.workspace-tabs-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
 .workspace-tabs button {
   min-height: 32px;
   border: 0;
@@ -2107,6 +2109,48 @@ select:focus-visible {
   font: 600 9px var(--font-geist-mono), monospace;
   letter-spacing: 0.04em;
 }
+
+.market-ranking-list {
+  display: grid;
+  min-height: 0;
+  gap: 9px;
+  padding: 3px 15px 0;
+}
+
+.market-ranking-description {
+  margin: 1px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.market-ranking-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.market-ranking-metrics button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 252, 0.7);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.market-ranking-metrics button.active {
+  border-color: rgba(27, 70, 59, 0.42);
+  background: var(--green-soft);
+  color: var(--green-deep);
+}
+
+.market-ranking-metrics button:disabled { cursor: not-allowed; opacity: 0.42; }
+.market-ranking-asof { color: var(--muted); font-size: 9px; }
+.market-ranking-loading, .market-ranking-error { margin: 0; padding: 18px 2px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.market-ranking-error { color: var(--red); }
+.market-ranking-rows { margin: 0 -15px; }
 
 .candidate-row {
   width: 100%;

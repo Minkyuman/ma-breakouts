@@ -19,7 +19,7 @@ async function render(path = "/", init = undefined) {
 }
 
 test("rejects unauthenticated market-data API requests", async () => {
-  for (const path of ["/api/chart?code=005930&market=KOSPI", "/api/search?query=삼성", "/api/universe", "/api/game/me", "/api/favorites", "/api/game/research-notes"]) {
+  for (const path of ["/api/chart?code=005930&market=KOSPI", "/api/search?query=삼성", "/api/universe", "/api/market-rankings", "/api/game/me", "/api/favorites", "/api/game/research-notes"]) {
     const response = await render(path);
     assert.equal(response.status, 401);
     assert.deepEqual(await response.json(), { error: "로그인이 필요합니다." });
@@ -166,6 +166,9 @@ test("ships product metadata and removes the disposable preview", async () => {
   assert.match(page, /manualSelectionDuringScanRef/);
   assert.match(page, /!manualSelectionDuringScanRef\.current/);
   assert.match(page, /MARKET PULSE/);
+  assert.match(page, /MARKET RANKING/);
+  assert.match(page, /시장 순위/);
+  assert.match(page, /\/api\/market-rankings/);
   assert.match(page, /MARKET_WATCHES/);
   assert.match(page, /대만 가권지수/);
   assert.match(page, /중국 CSI 300/);
@@ -187,6 +190,7 @@ test("ships product metadata and removes the disposable preview", async () => {
   await access(new URL("../app/api/chart/route.ts", import.meta.url));
   await access(new URL("../app/api/market-chart/route.ts", import.meta.url));
   await access(new URL("../app/api/universe/route.ts", import.meta.url));
+  await access(new URL("../app/api/market-rankings/route.ts", import.meta.url));
   await access(new URL("../app/api/search/route.ts", import.meta.url));
   await access(new URL("../app/api/auth/google/start/route.ts", import.meta.url));
   await access(new URL("../app/api/auth/google/callback/route.ts", import.meta.url));

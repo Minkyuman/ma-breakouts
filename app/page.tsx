@@ -16,6 +16,7 @@ import type {
   ChartTimeframe,
   ChartPoint,
   MarketFilter,
+  MarketRankMetric,
   Region,
   SecurityClassification,
   ScreeningMaPeriod,
@@ -210,6 +211,18 @@ function formatVolume(value: number) {
   return number.format(value);
 }
 
+function formatTradingValue(value: number | undefined, currency: Ticker["currency"] = "KRW") {
+  if (!value || value < 0) return "—";
+  if (currency === "USD") {
+    if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
+    if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+    return formatUsd(value);
+  }
+  if (value >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(1)}조`;
+  if (value >= 100_000_000) return `${number.format(value / 100_000_000)}억`;
+  return `${number.format(value / 10_000)}만`;
+}
+
 function formatKrwAmount(value: string) {
   return `${number.format(Number(value))}원`;
 }
@@ -340,6 +353,20 @@ type ChartApiPayload = {
   classification?: SecurityClassification;
 };
 type ClassificationFilter = { kind: "market" | "sector" | "theme"; value: string };
+type MarketRankingsPayload = {
+  items: Ticker[];
+  metric: MarketRankMetric;
+  asOf: string | null;
+  unavailable: boolean;
+  error?: string;
+};
+
+const MARKET_RANK_METRICS: Array<{ id: MarketRankMetric; label: string; description: string }> = [
+  { id: "tradingValue", label: "거래대금", description: "당일 누적 거래대금" },
+  { id: "changePct", label: "등락률", description: "당일 등락률" },
+  { id: "volume", label: "거래량", description: "당일 누적 거래량" },
+  { id: "marketCap", label: "시가총액", description: "현재 시가총액" },
+];
 
 const EMPTY_PRICE_CHANGES: PriceChangeSet = { daily: null, weekly: null, monthly: null };
 const CHART_RANGE_MIN = 10;
@@ -2099,7 +2126,12 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [results, setResults] = useState<Candidate[]>([]);
   const [selectedKey, setSelectedKey] = useState("");
   const [marketWatchId, setMarketWatchId] = useState("kospi");
-  const [workspaceTab, setWorkspaceTab] = useState<"markets" | "candidates">("markets");
+  const [workspaceTab, setWorkspaceTab] = useState<"markets" | "candidates" | "rankings">("markets");
+  const [rankMetric, setRankMetric] = useState<MarketRankMetric>("tradingValue");
+  const [rankedTickers, setRankedTickers] = useState<Ticker[]>([]);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+  const [rankingsAsOf, setRankingsAsOf] = useState<string | null>(null);
+  const [rankingsError, setRankingsError] = useState("");
   const [directTicker, setDirectTicker] = useState<Ticker | null>(null);
   const [stockQuery, setStockQuery] = useState("");
   const [stockMatches, setStockMatches] = useState<Ticker[]>([]);
@@ -2149,6 +2181,45 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (workspaceTab !== "rankings") return;
+    const controller = new AbortController();
+    const start = window.setTimeout(() => {
+      setRankingsLoading(true);
+      setRankingsError("");
+      setRankingsAsOf(null);
+      const params = new URLSearchParams({ region, market, asset, metric: rankMetric });
+      fetch(`/api/market-rankings?${params.toString()}`, { cache: "no-store", signal: controller.signal })
+        .then(async (response) => {
+          const payload = await response.json() as MarketRankingsPayload;
+          if (!response.ok) throw new Error(payload.error || "시장 순위를 불러오지 못했습니다.");
+          return payload;
+        })
+        .then((payload) => {
+          setRankedTickers(payload.items ?? []);
+          setRankingsAsOf(payload.asOf);
+          if (payload.unavailable) {
+            setRankingsError(region === "us" && (rankMetric === "tradingValue" || rankMetric === "volume")
+              ? "현재 미국 제공처에서는 거래대금·거래량 순위를 제공하지 않습니다. 등락률 또는 시가총액을 선택해 주세요."
+              : "표시할 시장 순위가 없습니다.");
+          }
+        })
+        .catch((error) => {
+          if (error instanceof Error && error.name !== "AbortError") {
+            setRankedTickers([]);
+            setRankingsError(error instanceof Error ? error.message : "시장 순위를 불러오지 못했습니다.");
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setRankingsLoading(false);
+        });
+    }, 0);
+    return () => {
+      window.clearTimeout(start);
+      controller.abort();
+    };
+  }, [workspaceTab, region, market, asset, rankMetric]);
 
   const openSavedSecurityChart = useCallback((nextTicker: Ticker) => {
     if (scanInProgressRef.current) manualSelectionDuringScanRef.current = true;
@@ -2670,7 +2741,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
           <span className="control-label">국가</span>
           <div className="segmented">
             <button className={region === "kr" ? "active" : ""} onClick={() => { setRegion("kr"); setMarket("all"); setAsset("all"); }}>한국</button>
-            <button className={region === "us" ? "active" : ""} onClick={() => { setRegion("us"); setMarket("all"); setAsset("stock"); }}>미국</button>
+            <button className={region === "us" ? "active" : ""} onClick={() => { setRegion("us"); setMarket("all"); setAsset("stock"); setRankMetric((current) => current === "tradingValue" || current === "volume" ? "changePct" : current); }}>미국</button>
           </div>
         </div>
         <div className="control-group">
@@ -2756,13 +2827,14 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
         <aside className="candidate-panel">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">{workspaceTab === "candidates" ? "BREAKOUT LIST" : "MARKET PULSE"}</p>
-              <h2>{workspaceTab === "candidates" ? "돌파 후보" : "주요 시장"}</h2>
+              <p className="eyebrow">{workspaceTab === "candidates" ? "BREAKOUT LIST" : workspaceTab === "rankings" ? "MARKET RANKING" : "MARKET PULSE"}</p>
+              <h2>{workspaceTab === "candidates" ? "돌파 후보" : workspaceTab === "rankings" ? "시장 순위" : "주요 시장"}</h2>
             </div>
-            <span className="count-pill">{workspaceTab === "candidates" ? filtered.length : MARKET_WATCHES.length}</span>
+            <span className="count-pill">{workspaceTab === "candidates" ? filtered.length : workspaceTab === "rankings" ? rankingsLoading ? "…" : rankedTickers.length : MARKET_WATCHES.length}</span>
           </div>
-          <div className="workspace-tabs" role="tablist" aria-label="주요 지수와 돌파 후보 전환">
+          <div className="workspace-tabs workspace-tabs-three" role="tablist" aria-label="주요 지수, 시장 순위와 돌파 후보 전환">
             <button type="button" role="tab" aria-selected={workspaceTab === "markets"} className={workspaceTab === "markets" ? "active" : ""} onClick={() => setWorkspaceTab("markets")}>주요 지수</button>
+            <button type="button" role="tab" aria-selected={workspaceTab === "rankings"} className={workspaceTab === "rankings" ? "active" : ""} onClick={() => setWorkspaceTab("rankings")}>시장 순위</button>
             <button type="button" role="tab" aria-selected={workspaceTab === "candidates"} className={workspaceTab === "candidates" ? "active" : ""} disabled={!hasScreenResults} onClick={() => setWorkspaceTab("candidates")}>돌파 후보{hasScreenResults ? ` ${filtered.length}` : ""}</button>
           </div>
           {workspaceTab === "candidates" && hasScreenResults ? <>
@@ -2896,7 +2968,40 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
             ))}
             {!filtered.length && <div className="empty-state">조건에 맞는 후보가 없습니다.</div>}
           </div>
-          </> : (
+          </> : workspaceTab === "rankings" ? (
+            <div className="market-ranking-list" aria-label="시장 순위 목록">
+              <p className="market-ranking-description">{MARKET_RANK_METRICS.find((metric) => metric.id === rankMetric)?.description} 기준 상위 100종목입니다. 종목을 누르면 일봉 차트를 엽니다.</p>
+              <div className="market-ranking-metrics" role="tablist" aria-label="시장 순위 기준">
+                {MARKET_RANK_METRICS.map((metric) => {
+                  const unavailable = region === "us" && (metric.id === "tradingValue" || metric.id === "volume");
+                  return <button key={metric.id} type="button" role="tab" aria-selected={rankMetric === metric.id} className={rankMetric === metric.id ? "active" : ""} disabled={unavailable} title={unavailable ? "현재 미국 제공처에서는 지원하지 않습니다." : metric.description} onClick={() => setRankMetric(metric.id)}>{metric.label}</button>;
+                })}
+              </div>
+              {rankingsAsOf && <small className="market-ranking-asof">기준 {new Date(rankingsAsOf).toLocaleString("ko-KR")}</small>}
+              {rankingsLoading ? <div className="market-ranking-loading">시장 순위를 불러오는 중…</div> : rankingsError ? <p className="market-ranking-error">{rankingsError}</p> : <div className="candidate-list market-ranking-rows">
+                {rankedTickers.map((item, index) => {
+                  const currentPrice = latestPrices[item.code] ?? item.price;
+                  const metricValue = rankMetric === "tradingValue"
+                    ? formatTradingValue(item.tradingValue, item.currency)
+                    : rankMetric === "changePct"
+                      ? signed(item.changePct ?? null, 2)
+                      : rankMetric === "volume"
+                        ? formatVolume(item.tradingVolume ?? 0)
+                        : formatCap(item.marketCap);
+                  return <button key={`${item.market}:${item.code}`} className={`candidate-row ${directTicker?.code === item.code && directTicker.market === item.market ? "selected" : ""}`} onClick={() => {
+                    if (scanInProgressRef.current) manualSelectionDuringScanRef.current = true;
+                    setDirectTicker(item);
+                    setSelectedKey("");
+                    setChartTimeframe("daily");
+                  }}>
+                    <span className="rank">{String(index + 1).padStart(2, "0")}</span>
+                    <span className="candidate-main"><span className="candidate-title-line"><strong>{item.name}</strong></span><small>{item.code} · {item.market} · {item.assetType === "STOCK" ? "주식" : item.assetType}</small></span>
+                    <span className="candidate-metric"><strong>{item.currency === "USD" ? formatUsd(currentPrice) : `${formatPrice(currentPrice)}원`}</strong><small className={rankMetric === "changePct" && (item.changePct ?? 0) < 0 ? "down" : "up"}>{MARKET_RANK_METRICS.find((metric) => metric.id === rankMetric)?.label} {metricValue}</small></span>
+                  </button>;
+                })}
+              </div>}
+            </div>
+          ) : (
             <div className="market-watch-list" aria-label="주요 시장 빠른 선택">
               <p>주요 지수의 흐름을 확인하고, 필요하면 돌파 후보 탭으로 전환하세요.</p>
               {[

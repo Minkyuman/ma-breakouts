@@ -12,6 +12,7 @@ export type ChartTimeframe = "daily" | Timeframe;
 export type ScreeningTimeframe = Timeframe | "both";
 export type MovingAveragePeriod = 10 | 240;
 export type ScreeningMaPeriod = MovingAveragePeriod | "both";
+export type MarketRankMetric = "tradingValue" | "changePct" | "volume" | "marketCap";
 
 export type Ticker = {
   code: string;
@@ -24,6 +25,13 @@ export type Ticker = {
   /** USD denominated instruments only. Applied server-side at scan/chart time. */
   krwPrice?: number;
   exchangeRate?: number;
+  /** Latest session change supplied by the market-universe provider. */
+  changePct?: number;
+  /** Latest session accumulated volume where the provider supplies it. */
+  tradingVolume?: number;
+  /** Latest session accumulated traded value in the instrument currency. */
+  tradingValue?: number;
+  tradedAt?: string;
   isNasdaq100?: boolean;
   sector?: string;
   industry?: string;
@@ -112,6 +120,12 @@ function numeric(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function optionalNumeric(value: unknown): number | undefined {
+  if (value === null || value === undefined || String(value).trim() === "" || String(value).toUpperCase() === "N/A") return undefined;
+  const parsed = Number(String(value).replaceAll(",", "").replace("%", ""));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: NAVER_HEADERS,
@@ -170,6 +184,10 @@ async function fetchMarket(slug: Market, assetFilter: AssetFilter): Promise<Tick
       assetType,
       marketCap: numeric(row.marketValueRaw),
       price: numeric(row.closePrice),
+      changePct: optionalNumeric(row.fluctuationsRatio),
+      tradingVolume: optionalNumeric(row.accumulatedTradingVolumeRaw ?? row.accumulatedTradingVolume),
+      tradingValue: optionalNumeric(row.accumulatedTradingValueRaw ?? row.accumulatedTradingValue),
+      tradedAt: typeof row.localTradedAt === "string" ? row.localTradedAt : undefined,
     });
   }
   return tickers;
@@ -187,6 +205,7 @@ type NasdaqRow = {
   name?: string;
   lastsale?: string;
   marketCap?: string;
+  pctchange?: string;
 };
 
 // This is deliberately curated instead of scanning every listed ETF.  The screener
@@ -249,6 +268,7 @@ async function fetchUsExchange(exchange: "nasdaq" | "nyse" | "amex", limit = 100
       marketCap: usdNumber(row.marketCap),
       price: usdNumber(row.lastsale),
       currency: "USD" as const,
+      changePct: optionalNumeric(row.pctchange),
     }))
     .filter((ticker) => ticker.code && ticker.price > 0);
 }
