@@ -1080,17 +1080,19 @@ select:focus-visible {
 .league-holdings small.positive { color: var(--red); }
 .league-holdings small.negative { color: var(--blue); }
 
-.league-order-history > button { justify-content: initial; }
+.league-order-history > button { min-height: 68px; justify-content: initial; }
 .league-order-history > button > span { width: 34px; padding: 5px 0; border-radius: 7px; text-align: center; font-size: 8px; font-weight: 750; }
 .league-order-history > button > span.buy { background: rgba(217, 88, 66, 0.1); color: var(--red); }
 .league-order-history > button > span.sell { background: rgba(52, 123, 150, 0.1); color: var(--blue); }
 .league-order-history > button > div { flex: 1; display: grid; gap: 3px; }
 .league-order-history > button strong { font-size: 10px; }
 .league-order-history > button small { color: var(--muted); font-size: 8px; }
+.league-order-history > button .league-order-fill-detail { color: #43655c; font: 650 8px var(--font-geist-mono), monospace; }
 .league-order-history q,
 .league-activity-list q,
 .league-player-trades q { overflow: hidden; color: #765d31; font-size: 8px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
-.league-order-history > button em { font: 650 9px var(--font-geist-mono), monospace; font-style: normal; }
+.league-order-history > button em { display: grid; justify-items: end; gap: 2px; font: 650 9px var(--font-geist-mono), monospace; font-style: normal; white-space: nowrap; }
+.league-order-history > button em small { font: 700 7px var(--font-geist-sans), sans-serif; letter-spacing: .04em; }
 .league-empty-copy,
 .league-inline-loading { margin: 0; padding: 15px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); font-size: 9px; text-align: center; }
 

@@ -165,6 +165,19 @@ function formatKrwAmount(value: string) {
   return `${number.format(Number(value))}원`;
 }
 
+function formatNativeTradePrice(value: string, currency: string) {
+  const price = Number(value);
+  if (!Number.isFinite(price)) return "—";
+  return currency === "USD"
+    ? `$${price.toLocaleString("en-US", { maximumFractionDigits: 4 })}`
+    : `${formatPrice(price)}원`;
+}
+
+function formatTradeUnitKrw(grossKrw: string, quantity: number) {
+  if (!Number.isFinite(quantity) || quantity < 1) return "—";
+  return formatKrwAmount(String(Number(grossKrw) / quantity));
+}
+
 function signed(value: number | null, digits = 1) {
   if (value === null) return "비교 불가";
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
@@ -1790,8 +1803,13 @@ function LeagueDialog({
                   {dashboard.orders.slice(0, 8).map((order) => (
                     <button type="button" key={order.orderId} onClick={() => onOpenChart(leagueSecurityTicker({ symbol: order.symbol, securityName: order.securityName, market: order.market, nativeCurrency: order.nativeCurrency, nativePrice: order.nativePrice }))} aria-label={`${order.securityName} 차트 보기`}>
                       <span className={order.side}>{order.side === "buy" ? "매수" : "매도"}</span>
-                      <div><strong>{order.securityName}</strong><small>{order.quantity}주 · {new Date(order.executedAt).toLocaleString("ko-KR")}</small>{order.tradeNote && <q>{order.tradeNote}</q>}</div>
-                      <em>{formatKrwAmount(order.grossKrw)}</em>
+                      <div>
+                        <strong>{order.securityName}</strong>
+                        <small>{order.market} · {order.symbol} · {order.quantity.toLocaleString("ko-KR")}주 · {new Date(order.executedAt).toLocaleString("ko-KR")}</small>
+                        <small className="league-order-fill-detail">체결단가 {formatNativeTradePrice(order.nativePrice, order.nativeCurrency)} · 원화 {formatTradeUnitKrw(order.grossKrw, order.quantity)}/주{order.nativeCurrency === "USD" ? ` · 환율 ${Number(order.fxRate).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}` : ""}</small>
+                        {order.tradeNote && <q>{order.tradeNote}</q>}
+                      </div>
+                      <em><small>총 체결</small>{formatKrwAmount(order.grossKrw)}</em>
                     </button>
                   ))}
                 </div>
