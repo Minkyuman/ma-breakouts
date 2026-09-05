@@ -2132,6 +2132,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [rankingsLoading, setRankingsLoading] = useState(false);
   const [rankingsAsOf, setRankingsAsOf] = useState<string | null>(null);
   const [rankingsError, setRankingsError] = useState("");
+  const [rankingQuery, setRankingQuery] = useState("");
   const [directTicker, setDirectTicker] = useState<Ticker | null>(null);
   const [stockQuery, setStockQuery] = useState("");
   const [stockMatches, setStockMatches] = useState<Ticker[]>([]);
@@ -2289,6 +2290,11 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       return true;
     });
   }, [results, query, statusFilter, volumeFilter, classificationFilters]);
+  const filteredRankedTickers = useMemo(() => {
+    const normalized = rankingQuery.trim().toLowerCase();
+    if (!normalized) return rankedTickers;
+    return rankedTickers.filter((item) => `${item.name} ${item.code}`.toLowerCase().includes(normalized));
+  }, [rankedTickers, rankingQuery]);
 
   const hasClassificationFilter = (kind: ClassificationFilter["kind"], value: string) =>
     classificationFilters.some((filter) => filter.kind === kind && filter.value === value);
@@ -2830,7 +2836,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
               <p className="eyebrow">{workspaceTab === "candidates" ? "BREAKOUT LIST" : workspaceTab === "rankings" ? "MARKET RANKING" : "MARKET PULSE"}</p>
               <h2>{workspaceTab === "candidates" ? "돌파 후보" : workspaceTab === "rankings" ? "시장 순위" : "주요 시장"}</h2>
             </div>
-            <span className="count-pill">{workspaceTab === "candidates" ? filtered.length : workspaceTab === "rankings" ? rankingsLoading ? "…" : rankedTickers.length : MARKET_WATCHES.length}</span>
+            <span className="count-pill">{workspaceTab === "candidates" ? filtered.length : workspaceTab === "rankings" ? rankingsLoading ? "…" : filteredRankedTickers.length : MARKET_WATCHES.length}</span>
           </div>
           <div className="workspace-tabs workspace-tabs-three" role="tablist" aria-label="주요 지수, 시장 순위와 돌파 후보 전환">
             <button type="button" role="tab" aria-selected={workspaceTab === "markets"} className={workspaceTab === "markets" ? "active" : ""} onClick={() => setWorkspaceTab("markets")}>주요 지수</button>
@@ -2977,9 +2983,13 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                   return <button key={metric.id} type="button" role="tab" aria-selected={rankMetric === metric.id} className={rankMetric === metric.id ? "active" : ""} disabled={unavailable} title={unavailable ? "현재 미국 제공처에서는 지원하지 않습니다." : metric.description} onClick={() => setRankMetric(metric.id)}>{metric.label}</button>;
                 })}
               </div>
+              <label className="search-box market-ranking-search">
+                <span>⌕</span>
+                <input value={rankingQuery} onChange={(event) => setRankingQuery(event.target.value)} placeholder="종목명 또는 티커로 필터" aria-label="시장 순위 종목 필터" />
+              </label>
               {rankingsAsOf && <small className="market-ranking-asof">기준 {new Date(rankingsAsOf).toLocaleString("ko-KR")}</small>}
               {rankingsLoading ? <div className="market-ranking-loading">시장 순위를 불러오는 중…</div> : rankingsError ? <p className="market-ranking-error">{rankingsError}</p> : <div className="candidate-list market-ranking-rows">
-                {rankedTickers.map((item, index) => {
+                {filteredRankedTickers.map((item, index) => {
                   const currentPrice = latestPrices[item.code] ?? item.price;
                   const metricValue = rankMetric === "tradingValue"
                     ? formatTradingValue(item.tradingValue, item.currency)
@@ -3007,6 +3017,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                     <span className="candidate-metric"><strong>{item.currency === "USD" ? formatUsd(currentPrice) : `${formatPrice(currentPrice)}원`}</strong><small className={rankMetric === "changePct" && (item.changePct ?? 0) < 0 ? "down" : "up"}>{MARKET_RANK_METRICS.find((metric) => metric.id === rankMetric)?.label} {metricValue}</small><small>{rankMetric === "volume" ? `거래대금 ${formatTradingValue(item.tradingValue, item.currency)}` : `거래량 ${formatVolume(item.tradingVolume ?? 0)}`}</small></span>
                   </button>;
                 })}
+                {!filteredRankedTickers.length && <div className="empty-state">일치하는 종목이 없습니다.</div>}
               </div>}
             </div>
           ) : (
