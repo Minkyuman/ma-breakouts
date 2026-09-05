@@ -1,4 +1,4 @@
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { marketSearchIndex, securityClassificationCache } from "@/db/schema";
 
@@ -373,7 +373,9 @@ function inferThemes(...parts: Array<string | undefined>): string[] {
 }
 
 const koreanClassificationCache = new Map<string, { expiresAt: number; classification: SecurityClassification }>();
-const CLASSIFICATION_CACHE_TTL_MS = 30 * 24 * 60 * 60_000;
+// The database record is durable. This short expiry applies only to the
+// process-local map, which is an optional first-level cache.
+const RUNTIME_CLASSIFICATION_CACHE_TTL_MS = 6 * 60 * 60_000;
 let classificationCacheStorageRequest: Promise<void> | null = null;
 
 /**
@@ -419,7 +421,6 @@ async function readClassificationCache(ticker: Pick<Ticker, "code" | "name" | "m
       .where(and(
         eq(securityClassificationCache.market, ticker.market),
         eq(securityClassificationCache.code, ticker.code.toUpperCase()),
-        gt(securityClassificationCache.fetchedAt, new Date(Date.now() - CLASSIFICATION_CACHE_TTL_MS)),
       ))
       .limit(1);
     if (!row) return null;
@@ -473,7 +474,7 @@ async function fetchKoreanClassification(ticker: Pick<Ticker, "code" | "name" | 
   if (cached && cached.expiresAt > Date.now()) return cached.classification;
   const persisted = await readClassificationCache(ticker);
   if (persisted) {
-    koreanClassificationCache.set(`${ticker.market}:${code}`, { classification: persisted, expiresAt: Date.now() + CLASSIFICATION_CACHE_TTL_MS });
+    koreanClassificationCache.set(`${ticker.market}:${code}`, { classification: persisted, expiresAt: Date.now() + RUNTIME_CLASSIFICATION_CACHE_TTL_MS });
     return persisted;
   }
   const response = await fetch(`https://finance.naver.com/item/main.naver?code=${encodeURIComponent(code)}`, {
@@ -487,7 +488,7 @@ async function fetchKoreanClassification(ticker: Pick<Ticker, "code" | "name" | 
   const overview = overviewHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   const classification = { sector, themes: inferThemes(name, sector, overview) };
   if (koreanClassificationCache.size >= 500) koreanClassificationCache.delete(koreanClassificationCache.keys().next().value!);
-  koreanClassificationCache.set(`${ticker.market}:${code}`, { classification, expiresAt: Date.now() + 6 * 60 * 60_000 });
+  koreanClassificationCache.set(`${ticker.market}:${code}`, { classification, expiresAt: Date.now() + RUNTIME_CLASSIFICATION_CACHE_TTL_MS });
   await writeClassificationCache(ticker, classification);
   return classification;
 }
@@ -500,7 +501,7 @@ async function fetchUsClassification(ticker: Pick<Ticker, "code" | "name" | "mar
   if (cached && cached.expiresAt > Date.now()) return cached.classification;
   const persisted = await readClassificationCache(ticker);
   if (persisted) {
-    usClassificationCache.set(`${ticker.market}:${code}`, { classification: persisted, expiresAt: Date.now() + CLASSIFICATION_CACHE_TTL_MS });
+    usClassificationCache.set(`${ticker.market}:${code}`, { classification: persisted, expiresAt: Date.now() + RUNTIME_CLASSIFICATION_CACHE_TTL_MS });
     return persisted;
   }
   const payload = await fetchUsJson<{
@@ -511,7 +512,7 @@ async function fetchUsClassification(ticker: Pick<Ticker, "code" | "name" | "mar
   const description = payload.data?.CompanyDescription?.value;
   const classification = { sector, industry, themes: inferThemes(name, sector, industry, description) };
   if (usClassificationCache.size >= 500) usClassificationCache.delete(usClassificationCache.keys().next().value!);
-  usClassificationCache.set(`${ticker.market}:${code}`, { classification, expiresAt: Date.now() + 6 * 60 * 60_000 });
+  usClassificationCache.set(`${ticker.market}:${code}`, { classification, expiresAt: Date.now() + RUNTIME_CLASSIFICATION_CACHE_TTL_MS });
   await writeClassificationCache(ticker, classification);
   return classification;
 }
