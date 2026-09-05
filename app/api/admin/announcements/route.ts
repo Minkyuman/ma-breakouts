@@ -6,6 +6,9 @@ import { GameAdminError } from "@/lib/game-admin";
 export const runtime = "nodejs";
 
 function errorResponse(requestId: string, error: unknown) {
+  if (error instanceof ServiceAnnouncementError) {
+    console.warn(JSON.stringify({ service: "line-breaker-announcements", event: "announcement.rejected", requestId, code: error.code, message: error.message }));
+  }
   if (error instanceof GameAdminError) return gameJson(requestId, { error: error.message, code: error.code }, { status: 403 });
   if (error instanceof ServiceAnnouncementError) return gameJson(requestId, { error: error.message, code: error.code }, { status: error.code === "NOT_FOUND" ? 404 : 400 });
   return gameJson(requestId, { error: "공지사항을 처리하지 못했습니다." }, { status: 503 });

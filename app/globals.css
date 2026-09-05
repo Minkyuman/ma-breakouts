@@ -1274,6 +1274,7 @@ select:focus-visible {
 .announcement-publish-toggle input { accent-color: var(--green); }
 .league-admin-announcements > form > button { min-height: 36px; align-self: end; border: 0; border-radius: 9px; background: var(--green); color: #fff; font-size: 9px; font-weight: 800; }
 .league-admin-announcements > form > button:disabled { opacity: .55; }
+.announcement-form-error { margin: -2px 0 0; color: #bd4737; font-size: 9px; font-weight: 700; }
 .announcement-admin-list { display: grid; border: 1px solid rgba(189, 135, 41, .2); border-radius: 10px; overflow: hidden; background: rgba(255, 255, 255, .68); }
 .announcement-admin-list article { display: flex; align-items: start; justify-content: space-between; gap: 10px; padding: 10px; }
 .announcement-admin-list article + article { border-top: 1px solid var(--line); }

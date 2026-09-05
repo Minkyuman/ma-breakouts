@@ -1273,6 +1273,7 @@ function LeagueDialog({
   const [accessRequestSavingId, setAccessRequestSavingId] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<AdminServiceAnnouncement[]>([]);
   const [announcementSaving, setAnnouncementSaving] = useState(false);
+  const [announcementError, setAnnouncementError] = useState("");
   const [announcementDraft, setAnnouncementDraft] = useState({ title: "", body: "", expiresAt: "", publishNow: true });
   const [leagueTab, setLeagueTab] = useState<"portfolio" | "ranking" | "activity" | "research" | "admin">("portfolio");
   const [loading, setLoading] = useState(true);
@@ -1692,8 +1693,15 @@ function LeagueDialog({
 
   async function createAnnouncement(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const title = announcementDraft.title.trim();
+    const body = announcementDraft.body.trim();
+    if (title.length < 2 || body.length < 2) {
+      setAnnouncementError("제목과 본문은 각각 2자 이상 입력해 주세요.");
+      return;
+    }
     setAnnouncementSaving(true);
     setError("");
+    setAnnouncementError("");
     try {
       const response = await fetch("/api/admin/announcements", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...announcementDraft, expiresAt: announcementDraft.expiresAt ? new Date(announcementDraft.expiresAt).toISOString() : null }) });
       const payload = await response.json() as { announcement?: AdminServiceAnnouncement; error?: string };
@@ -1702,7 +1710,7 @@ function LeagueDialog({
       setAnnouncementDraft({ title: "", body: "", expiresAt: "", publishNow: true });
       setLeagueNotice(payload.announcement.isPublished ? "공지를 게시했습니다. 다음 로그인부터 사용자에게 표시됩니다." : "공지 초안을 저장했습니다.");
     } catch (announcementError) {
-      setError(announcementError instanceof Error ? announcementError.message : "공지를 저장하지 못했습니다.");
+      setAnnouncementError(announcementError instanceof Error ? announcementError.message : "공지를 저장하지 못했습니다.");
     } finally {
       setAnnouncementSaving(false);
     }
@@ -1711,6 +1719,7 @@ function LeagueDialog({
   async function setAnnouncementPublication(id: string, publish: boolean) {
     setAnnouncementSaving(true);
     setError("");
+    setAnnouncementError("");
     try {
       const response = await fetch("/api/admin/announcements", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, publish }) });
       const payload = await response.json() as { announcement?: AdminServiceAnnouncement; error?: string };
@@ -1718,7 +1727,7 @@ function LeagueDialog({
       setAnnouncements((current) => current.map((announcement) => announcement.id === id ? payload.announcement! : announcement));
       setLeagueNotice(publish ? "공지를 게시했습니다." : "공지 게시를 중지했습니다.");
     } catch (announcementError) {
-      setError(announcementError instanceof Error ? announcementError.message : "공지 상태를 변경하지 못했습니다.");
+      setAnnouncementError(announcementError instanceof Error ? announcementError.message : "공지 상태를 변경하지 못했습니다.");
     } finally {
       setAnnouncementSaving(false);
     }
@@ -2009,6 +2018,7 @@ function LeagueDialog({
                     <label className="announcement-publish-toggle"><input type="checkbox" checked={announcementDraft.publishNow} onChange={(event) => setAnnouncementDraft((current) => ({ ...current, publishNow: event.target.checked }))} />즉시 게시</label>
                     <button type="submit" disabled={announcementSaving}>{announcementSaving ? "저장 중…" : announcementDraft.publishNow ? "공지 게시" : "초안 저장"}</button>
                   </form>
+                  {announcementError && <p className="announcement-form-error" role="alert">{announcementError}</p>}
                   <div className="announcement-admin-list">{announcements.length ? announcements.map((announcement) => <article key={announcement.id}><div><strong>{announcement.title}</strong><small>{announcement.isPublished ? `게시 ${new Date(announcement.publishedAt).toLocaleString("ko-KR")}` : "초안"}{announcement.expiresAt ? ` · 종료 ${new Date(announcement.expiresAt).toLocaleString("ko-KR")}` : ""}</small><p>{announcement.body}</p></div><button type="button" disabled={announcementSaving} onClick={() => void setAnnouncementPublication(announcement.id, !announcement.isPublished)}>{announcement.isPublished ? "게시 중지" : "게시"}</button></article>) : <p className="league-empty-copy">작성한 공지가 없습니다.</p>}</div>
                 </section>
                 <div className="league-admin-seasons">
