@@ -22,7 +22,7 @@ function numberFor(ticker: Ticker, metric: MarketRankMetric) {
 }
 
 async function enrichRankedItems(items: Ticker[]) {
-  const enriched = [...items];
+  const enriched = items.map((ticker) => ({ ...ticker, classificationStatus: "pending" as const }));
   const enrichmentCount = Math.min(20, items.length);
   let nextIndex = 0;
   // A ranking view can contain 100 securities. Enrich the first visible page
@@ -33,12 +33,19 @@ async function enrichRankedItems(items: Ticker[]) {
       const ticker = items[index];
       try {
         const classification = await fetchSecurityClassification(ticker);
-        const isNasdaq100 = ticker.market === "NASDAQ" && ticker.assetType === "STOCK"
-          ? await fetchNasdaq100Membership(ticker.code)
-          : undefined;
-        enriched[index] = { ...ticker, ...classification, isNasdaq100 };
+        let isNasdaq100: boolean | undefined;
+        if (ticker.market === "NASDAQ" && ticker.assetType === "STOCK") {
+          try {
+            isNasdaq100 = await fetchNasdaq100Membership(ticker.code);
+          } catch {
+            // Membership is optional metadata; keep the profile classification.
+          }
+        }
+        const hasClassification = Boolean(classification.sector || classification.industry || classification.themes?.length);
+        enriched[index] = { ...ticker, ...classification, isNasdaq100, classificationStatus: hasClassification ? "ready" : "unavailable" };
       } catch {
         // A missing profile must not hide an otherwise valid market ranking.
+        enriched[index] = { ...ticker, classificationStatus: "unavailable" };
       }
     }
   });

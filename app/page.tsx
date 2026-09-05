@@ -360,6 +360,9 @@ type MarketRankingsPayload = {
   unavailable: boolean;
   error?: string;
 };
+type MarketRankingClassificationsPayload = {
+  items: Array<Pick<Ticker, "code" | "market" | "sector" | "industry" | "themes" | "isNasdaq100" | "classificationStatus">>;
+};
 
 const MARKET_RANK_METRICS: Array<{ id: MarketRankMetric; label: string; description: string }> = [
   { id: "tradingValue", label: "거래대금", description: "당일 누적 거래대금" },
@@ -2205,6 +2208,33 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
               ? "현재 미국 제공처에서는 거래대금·거래량 순위를 제공하지 않습니다. 등락률 또는 시가총액을 선택해 주세요."
               : "표시할 시장 순위가 없습니다.");
           }
+          const pendingItems = (payload.items ?? []).filter((item) => item.classificationStatus === "pending");
+          if (region === "us" && pendingItems.length) {
+            void fetch("/api/market-rankings/classifications", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              cache: "no-store",
+              signal: controller.signal,
+              body: JSON.stringify({ items: pendingItems.map(({ code, name, market, assetType }) => ({ code, name, market, assetType })) }),
+            })
+              .then(async (classificationResponse) => {
+                const classificationPayload = await classificationResponse.json() as MarketRankingClassificationsPayload;
+                if (!classificationResponse.ok) throw new Error(classificationPayload.items ? "" : "분류 정보를 불러오지 못했습니다.");
+                return classificationPayload;
+              })
+              .then((classificationPayload) => {
+                const updates = new Map(classificationPayload.items.map((item) => [`${item.market}:${item.code}`, item]));
+                setRankedTickers((current) => current.map((item) => {
+                  const update = updates.get(`${item.market}:${item.code}`);
+                  return update ? { ...item, ...update } : item;
+                }));
+              })
+              .catch((classificationError) => {
+                if (!(classificationError instanceof Error && classificationError.name === "AbortError")) {
+                  setRankedTickers((current) => current.map((item) => item.classificationStatus === "pending" ? { ...item, classificationStatus: "unavailable" } : item));
+                }
+              });
+          }
         })
         .catch((error) => {
           if (error instanceof Error && error.name !== "AbortError") {
@@ -3030,7 +3060,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                       <span className="candidate-title-line"><strong>{item.name}</strong>{item.isNasdaq100 && <em className="ndx-chip">NASDAQ 100</em>}</span>
                       <span className="candidate-classification" aria-label={`${item.name} 시장, 섹터와 테마`}>
                         <span className={`candidate-market-tag ${item.market.toLowerCase()}${hasRankingClassificationFilter("market", item.market) ? " active" : ""}`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleRankingClassificationFilter({ kind: "market", value: item.market }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleRankingClassificationFilter({ kind: "market", value: item.market }); } }}>{item.market}</span>
-                        {item.sector ? <span className={`candidate-sector-tag${hasRankingClassificationFilter("sector", item.sector) ? " active" : ""}`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleRankingClassificationFilter({ kind: "sector", value: item.sector! }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleRankingClassificationFilter({ kind: "sector", value: item.sector! }); } }}>{item.sector}</span> : <span className="candidate-sector-tag pending">섹터 확인 중</span>}
+                        {item.sector ? <span className={`candidate-sector-tag${hasRankingClassificationFilter("sector", item.sector) ? " active" : ""}`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleRankingClassificationFilter({ kind: "sector", value: item.sector! }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleRankingClassificationFilter({ kind: "sector", value: item.sector! }); } }}>{item.sector}</span> : <span className={`candidate-sector-tag${item.classificationStatus === "pending" ? " pending" : " unavailable"}`}>{item.classificationStatus === "pending" ? "섹터 확인 중" : "섹터 정보 없음"}</span>}
                         {item.themes?.slice(0, 2).map((theme) => <span key={theme} className={`candidate-theme-tag${hasRankingClassificationFilter("theme", theme) ? " active" : ""}`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleRankingClassificationFilter({ kind: "theme", value: theme }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleRankingClassificationFilter({ kind: "theme", value: theme }); } }}>{theme}</span>)}
                       </span>
                       <small>{item.code} · {item.assetType === "STOCK" ? "주식" : item.assetType} · 등락률 <b className={(item.changePct ?? 0) < 0 ? "down" : "up"}>{signed(item.changePct ?? null, 2)}</b></small>

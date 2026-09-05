@@ -33,6 +33,8 @@ export type Ticker = {
   tradingValue?: number;
   tradedAt?: string;
   isNasdaq100?: boolean;
+  /** Ranking classification enrichment state. */
+  classificationStatus?: "pending" | "ready" | "unavailable";
   sector?: string;
   industry?: string;
   themes?: string[];

@@ -19,8 +19,8 @@ async function render(path = "/", init = undefined) {
 }
 
 test("rejects unauthenticated market-data API requests", async () => {
-  for (const path of ["/api/chart?code=005930&market=KOSPI", "/api/search?query=삼성", "/api/universe", "/api/market-rankings", "/api/game/me", "/api/favorites", "/api/game/research-notes"]) {
-    const response = await render(path);
+  for (const path of ["/api/chart?code=005930&market=KOSPI", "/api/search?query=삼성", "/api/universe", "/api/market-rankings", "/api/market-rankings/classifications", "/api/game/me", "/api/favorites", "/api/game/research-notes"]) {
+    const response = await render(path, path === "/api/market-rankings/classifications" ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items: [] }) } : undefined);
     assert.equal(response.status, 401);
     assert.deepEqual(await response.json(), { error: "로그인이 필요합니다." });
   }
@@ -191,6 +191,7 @@ test("ships product metadata and removes the disposable preview", async () => {
   await access(new URL("../app/api/market-chart/route.ts", import.meta.url));
   await access(new URL("../app/api/universe/route.ts", import.meta.url));
   await access(new URL("../app/api/market-rankings/route.ts", import.meta.url));
+  await access(new URL("../app/api/market-rankings/classifications/route.ts", import.meta.url));
   await access(new URL("../app/api/search/route.ts", import.meta.url));
   await access(new URL("../app/api/auth/google/start/route.ts", import.meta.url));
   await access(new URL("../app/api/auth/google/callback/route.ts", import.meta.url));

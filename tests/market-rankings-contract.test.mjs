@@ -3,8 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("market rankings expose the four ranking metrics without bypassing the login gate", async () => {
-  const [route, market, page] = await Promise.all([
+  const [route, classifications, market, page] = await Promise.all([
     readFile(new URL("../app/api/market-rankings/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/market-rankings/classifications/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/market.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
   ]);
@@ -14,6 +15,12 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(route, /fetchSecurityClassification/);
   assert.match(route, /enrichRankedItems/);
   assert.match(route, /Math\.min\(20, items\.length\)/);
+  assert.match(route, /classificationStatus/);
+  assert.match(classifications, /getSession\(request\)/);
+  assert.match(classifications, /MAX_ITEMS = 100/);
+  assert.match(classifications, /fetchSecurityClassification/);
+  assert.match(classifications, /fetchNasdaq100Membership/);
+  assert.match(classifications, /classificationStatus/);
   assert.match(market, /tradingValue\?: number/);
   assert.match(market, /accumulatedTradingValueRaw/);
   assert.match(market, /fluctuationsRatio/);
@@ -26,6 +33,8 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(page, /filteredRankedTickers/);
   assert.match(page, /rankingClassificationFilters/);
   assert.match(page, /toggleRankingClassificationFilter/);
+  assert.match(page, /\/api\/market-rankings\/classifications/);
+  assert.match(page, /섹터 정보 없음/);
   assert.match(page, /candidate-classification/);
   assert.match(page, /NASDAQ 100/);
   assert.match(page, /setDirectTicker\(item\);\s*setSelectedKey\(""\);\s*setChartTimeframe\("weekly"\);/s);
