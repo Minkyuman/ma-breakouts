@@ -1194,13 +1194,16 @@ select:focus-visible {
 .league-player-detail-metrics b { margin-left: 4px; color: var(--ink); font: 700 9px var(--font-geist-mono), monospace; }
 .league-player-trades { display: grid; overflow: hidden; border: 1px solid rgba(27, 70, 59, 0.16); border-radius: 11px; background: rgba(255, 255, 255, 0.62); }
 .league-player-trades > strong { padding: 9px 11px 6px; color: var(--muted); font-size: 8px; }
-.league-player-trades > button { display: flex; align-items: center; gap: 9px; min-height: 48px; padding: 8px 11px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; }
+.league-player-trades > button { display: flex; align-items: center; gap: 9px; min-height: 67px; padding: 8px 11px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; }
 .league-player-trades > button > span { width: 32px; flex: 0 0 auto; padding: 4px 0; border-radius: 7px; font-size: 8px; font-weight: 750; text-align: center; }
 .league-player-trades > button > span.buy { background: rgba(217, 88, 66, 0.1); color: var(--red); }
 .league-player-trades > button > span.sell { background: rgba(52, 123, 150, 0.1); color: var(--blue); }
 .league-player-trades > button > div { min-width: 0; display: grid; gap: 2px; }
 .league-player-trades b { font-size: 9px; }
 .league-player-trades small { color: var(--muted); font-size: 8px; }
+.league-player-trades .league-player-fill-detail { color: #43655c; font: 650 8px var(--font-geist-mono), monospace; }
+.league-player-trades em { display: grid; justify-items: end; gap: 2px; color: var(--ink); font: 650 9px var(--font-geist-mono), monospace; font-style: normal; white-space: nowrap; }
+.league-player-trades em small { font: 700 7px var(--font-geist-sans), sans-serif; letter-spacing: .04em; }
 
 .league-activity-list > article > span { width: 34px; padding: 5px 0; border-radius: 7px; font-size: 8px; font-weight: 750; text-align: center; }
 .league-activity-list > article > span.buy { background: rgba(217, 88, 66, 0.1); color: var(--red); }

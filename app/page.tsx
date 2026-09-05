@@ -195,7 +195,7 @@ function leagueSecurityTicker(security: {
   nativePrice?: string;
   assetType?: "STOCK" | "ETF" | "INDEX";
 }): Ticker {
-  const isUsd = security.nativeCurrency === "USD" || ["NASDAQ", "NYSE", "AMEX"].includes(security.market);
+  const isUsd = security.nativeCurrency === "USD" || ["NASDAQ", "NYSE", "AMEX", "US_ETF"].includes(security.market);
   return {
     code: security.symbol,
     name: security.securityName,
@@ -1843,7 +1843,7 @@ function LeagueDialog({
                     <div className="league-holdings">
                       {selectedPlayer.holdings.length ? selectedPlayer.holdings.map((holding) => <button type="button" key={`${holding.market}:${holding.symbol}`} onClick={() => onOpenChart(leagueSecurityTicker({ ...holding, nativePrice: holding.lastNativePrice }))} aria-label={`${holding.securityName} 차트 보기`}><div><strong>{holding.securityName}</strong><small>{holding.symbol} · {holding.market} · {holding.quantity.toLocaleString("ko-KR")}주</small></div><div><strong>{formatKrwAmount(holding.marketValueKrw)}</strong><small className={Number(holding.unrealizedPnlKrw) >= 0 ? "positive" : "negative"}>평가손익 {formatKrwAmount(holding.unrealizedPnlKrw)}{holdingReturnPct(holding) === null ? "" : ` · ${holdingReturnPct(holding)! >= 0 ? "+" : ""}${holdingReturnPct(holding)!.toFixed(2)}%`}</small></div></button>) : <p className="league-empty-copy">보유종목이 없습니다.</p>}
                     </div>
-                    {!selectedPlayer.activityHidden && selectedPlayer.recentTrades.length > 0 && <div className="league-player-trades"><strong>최근 매매</strong>{selectedPlayer.recentTrades.map((activity) => <button type="button" key={activity.id} onClick={() => onOpenChart(leagueSecurityTicker(activity))}><span className={activity.side}>{activity.side === "buy" ? "매수" : "매도"}</span><div><b>{activity.securityName}</b><small>{activity.quantity.toLocaleString("ko-KR")}주 · {new Date(activity.executedAt).toLocaleString("ko-KR")}</small>{activity.tradeNote && <q>{activity.tradeNote}</q>}</div></button>)}</div>}
+                    {!selectedPlayer.activityHidden && selectedPlayer.recentTrades.length > 0 && <div className="league-player-trades"><strong>최근 매매</strong>{selectedPlayer.recentTrades.map((activity) => <button type="button" key={activity.id} onClick={() => onOpenChart(leagueSecurityTicker(activity))}><span className={activity.side}>{activity.side === "buy" ? "매수" : "매도"}</span><div><b>{activity.securityName}</b><small>{activity.market} · {activity.symbol} · {activity.quantity.toLocaleString("ko-KR")}주 · {new Date(activity.executedAt).toLocaleString("ko-KR")}</small><small className="league-player-fill-detail">체결단가 {formatNativeTradePrice(activity.nativePrice, activity.nativeCurrency)} · 원화 {formatTradeUnitKrw(activity.grossKrw, activity.quantity)}/주{activity.nativeCurrency === "USD" ? ` · 환율 ${Number(activity.fxRate).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}` : ""}</small>{activity.tradeNote && <q>{activity.tradeNote}</q>}</div><em><small>총 체결</small>{formatKrwAmount(activity.grossKrw)}</em></button>)}</div>}
                     {selectedPlayer.activityHidden && <p className="league-snapshot-time">이 참가자는 매매 활동 피드를 비공개로 설정했습니다.</p>}
                   </div>
                 )}

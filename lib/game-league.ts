@@ -67,6 +67,9 @@ export type LeagueActivity = {
   market: string;
   quantity: number;
   tradeNote: string | null;
+  nativePrice: string;
+  nativeCurrency: string;
+  fxRate: string;
   grossKrw: string;
   executedAt: string;
 };
@@ -422,6 +425,9 @@ async function leagueActivity(seasonId: string, limit = 30): Promise<LeagueActiv
       market: orders.market,
       quantity: orders.quantity,
       tradeNote: orders.tradeNote,
+      nativePrice: executions.nativePrice,
+      nativeCurrency: executions.nativeCurrency,
+      fxRate: executions.fxRate,
       grossKrw: executions.grossKrw,
       executedAt: executions.createdAt,
     })
