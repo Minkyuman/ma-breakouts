@@ -2133,6 +2133,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [rankingsAsOf, setRankingsAsOf] = useState<string | null>(null);
   const [rankingsError, setRankingsError] = useState("");
   const [rankingQuery, setRankingQuery] = useState("");
+  const [rankingClassificationFilters, setRankingClassificationFilters] = useState<ClassificationFilter[]>([]);
   const [directTicker, setDirectTicker] = useState<Ticker | null>(null);
   const [stockQuery, setStockQuery] = useState("");
   const [stockMatches, setStockMatches] = useState<Ticker[]>([]);
@@ -2292,9 +2293,17 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   }, [results, query, statusFilter, volumeFilter, classificationFilters]);
   const filteredRankedTickers = useMemo(() => {
     const normalized = rankingQuery.trim().toLowerCase();
-    if (!normalized) return rankedTickers;
-    return rankedTickers.filter((item) => `${item.name} ${item.code}`.toLowerCase().includes(normalized));
-  }, [rankedTickers, rankingQuery]);
+    return rankedTickers.filter((item) => {
+      if (normalized && !`${item.name} ${item.code}`.toLowerCase().includes(normalized)) return false;
+      const market = rankingClassificationFilters.find((filter) => filter.kind === "market");
+      const sector = rankingClassificationFilters.find((filter) => filter.kind === "sector");
+      const themes = rankingClassificationFilters.filter((filter) => filter.kind === "theme");
+      if (market && item.market !== market.value) return false;
+      if (sector && item.sector !== sector.value) return false;
+      if (themes.some((filter) => !item.themes?.includes(filter.value))) return false;
+      return true;
+    });
+  }, [rankedTickers, rankingQuery, rankingClassificationFilters]);
 
   const hasClassificationFilter = (kind: ClassificationFilter["kind"], value: string) =>
     classificationFilters.some((filter) => filter.kind === kind && filter.value === value);
@@ -2303,6 +2312,18 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       const exists = current.some((filter) => filter.kind === next.kind && filter.value === next.value);
       if (exists) return current.filter((filter) => !(filter.kind === next.kind && filter.value === next.value));
       // Market and sector are mutually exclusive dimensions; themes can be combined.
+      const retained = next.kind === "market" || next.kind === "sector"
+        ? current.filter((filter) => filter.kind !== next.kind)
+        : current;
+      return [...retained, next];
+    });
+  };
+  const hasRankingClassificationFilter = (kind: ClassificationFilter["kind"], value: string) =>
+    rankingClassificationFilters.some((filter) => filter.kind === kind && filter.value === value);
+  const toggleRankingClassificationFilter = (next: ClassificationFilter) => {
+    setRankingClassificationFilters((current) => {
+      const exists = current.some((filter) => filter.kind === next.kind && filter.value === next.value);
+      if (exists) return current.filter((filter) => !(filter.kind === next.kind && filter.value === next.value));
       const retained = next.kind === "market" || next.kind === "sector"
         ? current.filter((filter) => filter.kind !== next.kind)
         : current;
@@ -2987,6 +3008,13 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                 <span>⌕</span>
                 <input value={rankingQuery} onChange={(event) => setRankingQuery(event.target.value)} placeholder="종목명 또는 티커로 필터" aria-label="시장 순위 종목 필터" />
               </label>
+              {rankingClassificationFilters.length > 0 && <div className="classification-filter market-ranking-classification-filter">
+                <span>선택</span>
+                <div>
+                  {rankingClassificationFilters.map((filter) => <button key={`${filter.kind}:${filter.value}`} type="button" className={`classification-filter-chip ${filter.kind}${filter.kind === "market" ? ` ${filter.value.toLowerCase()}` : ""}`} onClick={() => toggleRankingClassificationFilter(filter)}>{filter.value} <b>×</b></button>)}
+                  <button className="clear-all" type="button" onClick={() => setRankingClassificationFilters([])}>전체 해제</button>
+                </div>
+              </div>}
               {rankingsAsOf && <small className="market-ranking-asof">기준 {new Date(rankingsAsOf).toLocaleString("ko-KR")}</small>}
               {rankingsLoading ? <div className="market-ranking-loading">시장 순위를 불러오는 중…</div> : rankingsError ? <p className="market-ranking-error">{rankingsError}</p> : <div className="candidate-list market-ranking-rows">
                 {filteredRankedTickers.map((item, index) => {
@@ -3008,9 +3036,9 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                     <span className="candidate-main">
                       <span className="candidate-title-line"><strong>{item.name}</strong>{item.isNasdaq100 && <em className="ndx-chip">NASDAQ 100</em>}</span>
                       <span className="candidate-classification" aria-label={`${item.name} 시장, 섹터와 테마`}>
-                        <span className={`candidate-market-tag ${item.market.toLowerCase()}`}>{item.market}</span>
-                        {item.sector ? <span className="candidate-sector-tag">{item.sector}</span> : <span className="candidate-sector-tag pending">섹터 확인 중</span>}
-                        {item.themes?.slice(0, 2).map((theme) => <span key={theme} className="candidate-theme-tag">{theme}</span>)}
+                        <span className={`candidate-market-tag ${item.market.toLowerCase()}${hasRankingClassificationFilter("market", item.market) ? " active" : ""}`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleRankingClassificationFilter({ kind: "market", value: item.market }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleRankingClassificationFilter({ kind: "market", value: item.market }); } }}>{item.market}</span>
+                        {item.sector ? <span className={`candidate-sector-tag${hasRankingClassificationFilter("sector", item.sector) ? " active" : ""}`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleRankingClassificationFilter({ kind: "sector", value: item.sector! }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleRankingClassificationFilter({ kind: "sector", value: item.sector! }); } }}>{item.sector}</span> : <span className="candidate-sector-tag pending">섹터 확인 중</span>}
+                        {item.themes?.slice(0, 2).map((theme) => <span key={theme} className={`candidate-theme-tag${hasRankingClassificationFilter("theme", theme) ? " active" : ""}`} role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleRankingClassificationFilter({ kind: "theme", value: theme }); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); toggleRankingClassificationFilter({ kind: "theme", value: theme }); } }}>{theme}</span>)}
                       </span>
                       <small><span className="ranking-ticker-filter" role="button" tabIndex={0} title={`${item.code} 티커로 목록 필터`} onClick={(event) => { event.stopPropagation(); setRankingQuery(item.code); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setRankingQuery(item.code); } }}>{item.code}</span> · {item.assetType === "STOCK" ? "주식" : item.assetType} · 등락률 <b className={(item.changePct ?? 0) < 0 ? "down" : "up"}>{signed(item.changePct ?? null, 2)}</b></small>
                     </span>

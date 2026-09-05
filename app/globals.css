@@ -2148,6 +2148,7 @@ select:focus-visible {
 
 .market-ranking-metrics button:disabled { cursor: not-allowed; opacity: 0.42; }
 .market-ranking-search { margin: 0; }
+.market-ranking-classification-filter { padding: 0 1px; }
 .ranking-ticker-filter { color: var(--green); cursor: pointer; font-weight: 750; text-decoration: underline; text-decoration-color: rgba(27, 70, 59, 0.28); text-underline-offset: 2px; }
 .ranking-ticker-filter:hover, .ranking-ticker-filter:focus-visible { color: var(--gold); outline: none; text-decoration-color: currentColor; }
 .market-ranking-asof { color: var(--muted); font-size: 9px; }
