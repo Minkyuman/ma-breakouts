@@ -45,4 +45,6 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(page, /candidate-classification/);
   assert.match(page, /NASDAQ 100/);
   assert.match(page, /setDirectTicker\(item\);\s*setSelectedKey\(""\);\s*setChartTimeframe\("weekly"\);/s);
+  assert.match(page, /const confirmedTradingVolume = typeof item\.tradingVolume === "number" && item\.tradingVolume > 0/);
+  assert.match(page, /secondaryMetric && <small>\{secondaryMetric\}<\/small>/);
 });

@@ -3046,13 +3046,21 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
               {rankingsLoading ? <div className="market-ranking-loading">시장 순위를 불러오는 중…</div> : rankingsError ? <p className="market-ranking-error">{rankingsError}</p> : <div className="candidate-list market-ranking-rows">
                 {filteredRankedTickers.map((item, index) => {
                   const currentPrice = latestPrices[item.code] ?? item.price;
+                  const confirmedTradingVolume = typeof item.tradingVolume === "number" && item.tradingVolume > 0
+                    ? item.tradingVolume
+                    : null;
                   const metricValue = rankMetric === "tradingValue"
                     ? formatTradingValue(item.tradingValue, item.currency)
                     : rankMetric === "changePct"
                       ? signed(item.changePct ?? null, 2)
                       : rankMetric === "volume"
-                        ? formatVolume(item.tradingVolume ?? 0)
+                        ? formatVolume(confirmedTradingVolume ?? 0)
                         : formatCap(item.marketCap);
+                  const secondaryMetric = rankMetric === "volume"
+                    ? `거래대금 ${formatTradingValue(item.tradingValue, item.currency)}`
+                    : confirmedTradingVolume === null
+                      ? null
+                      : `거래량 ${formatVolume(confirmedTradingVolume)}`;
                   return <button key={`${item.market}:${item.code}`} className={`candidate-row ${directTicker?.code === item.code && directTicker.market === item.market ? "selected" : ""}`} onClick={() => {
                     if (scanInProgressRef.current) manualSelectionDuringScanRef.current = true;
                     setDirectTicker(item);
@@ -3069,7 +3077,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                       </span>
                       <small>{item.code} · {item.assetType === "STOCK" ? "주식" : item.assetType} · 등락률 <b className={(item.changePct ?? 0) < 0 ? "down" : "up"}>{signed(item.changePct ?? null, 2)}</b></small>
                     </span>
-                    <span className="candidate-metric"><strong>{item.currency === "USD" ? formatUsd(currentPrice) : `${formatPrice(currentPrice)}원`}</strong><small className={rankMetric === "changePct" && (item.changePct ?? 0) < 0 ? "down" : "up"}>{MARKET_RANK_METRICS.find((metric) => metric.id === rankMetric)?.label} {metricValue}</small><small>{rankMetric === "volume" ? `거래대금 ${formatTradingValue(item.tradingValue, item.currency)}` : `거래량 ${formatVolume(item.tradingVolume ?? 0)}`}</small></span>
+                    <span className="candidate-metric"><strong>{item.currency === "USD" ? formatUsd(currentPrice) : `${formatPrice(currentPrice)}원`}</strong><small className={rankMetric === "changePct" && (item.changePct ?? 0) < 0 ? "down" : "up"}>{MARKET_RANK_METRICS.find((metric) => metric.id === rankMetric)?.label} {metricValue}</small>{secondaryMetric && <small>{secondaryMetric}</small>}</span>
                   </button>;
                 })}
                 {!filteredRankedTickers.length && <div className="empty-state">일치하는 종목이 없습니다.</div>}
