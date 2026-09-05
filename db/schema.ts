@@ -232,6 +232,28 @@ export const marketSearchIndex = pgTable(
   ],
 ).enableRLS();
 
+/** Slowly changing provider metadata shared by screening, rankings, and charts. */
+export const securityClassificationCache = pgTable(
+  "security_classification_cache",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    market: varchar("market", { length: 16 }).notNull(),
+    code: varchar("code", { length: 16 }).notNull(),
+    securityName: varchar("security_name", { length: 160 }).notNull(),
+    assetType: varchar("asset_type", { length: 8 }).notNull(),
+    sector: varchar("sector", { length: 160 }),
+    industry: varchar("industry", { length: 160 }),
+    themes: jsonb("themes").$type<string[]>().notNull().default([]),
+    provider: varchar("provider", { length: 32 }).notNull().default("nasdaq"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("security_classification_cache_market_code_unique").on(table.market, table.code),
+    index("security_classification_cache_fetched_idx").on(table.fetchedAt),
+  ],
+).enableRLS();
+
 export const seasons = pgTable(
   "seasons",
   {
