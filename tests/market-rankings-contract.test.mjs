@@ -22,6 +22,8 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(classifications, /fetchNasdaq100Membership/);
   assert.match(classifications, /classificationStatus/);
   assert.match(market, /tradingValue\?: number/);
+  assert.match(market, /ensureClassificationCacheStorage/);
+  assert.match(market, /security_classification_cache/);
   assert.match(market, /accumulatedTradingValueRaw/);
   assert.match(market, /fluctuationsRatio/);
   assert.match(page, /MARKET_RANK_METRICS/);

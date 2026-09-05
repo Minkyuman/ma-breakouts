@@ -374,9 +374,45 @@ function inferThemes(...parts: Array<string | undefined>): string[] {
 
 const koreanClassificationCache = new Map<string, { expiresAt: number; classification: SecurityClassification }>();
 const CLASSIFICATION_CACHE_TTL_MS = 30 * 24 * 60 * 60_000;
+let classificationCacheStorageRequest: Promise<void> | null = null;
+
+/**
+ * Keep classification lookup self-contained like the existing search index.
+ * The DDL is fixed and idempotent; a newly deployed environment can start
+ * caching without requiring an operator to run ad-hoc SQL in Supabase.
+ */
+async function ensureClassificationCacheStorage() {
+  if (classificationCacheStorageRequest) return classificationCacheStorageRequest;
+  classificationCacheStorageRequest = (async () => {
+    const database = getDb();
+    await database.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "security_classification_cache" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "market" varchar(16) NOT NULL,
+        "code" varchar(16) NOT NULL,
+        "security_name" varchar(160) NOT NULL,
+        "asset_type" varchar(8) NOT NULL,
+        "sector" varchar(160),
+        "industry" varchar(160),
+        "themes" jsonb DEFAULT '[]'::jsonb NOT NULL,
+        "provider" varchar(32) DEFAULT 'nasdaq' NOT NULL,
+        "fetched_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+      )
+    `));
+    await database.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS "security_classification_cache_market_code_unique" ON "security_classification_cache" ("market", "code")`));
+    await database.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "security_classification_cache_fetched_idx" ON "security_classification_cache" ("fetched_at")`));
+    await database.execute(sql.raw(`ALTER TABLE "security_classification_cache" ENABLE ROW LEVEL SECURITY`));
+  })().catch((error) => {
+    classificationCacheStorageRequest = null;
+    throw error;
+  });
+  return classificationCacheStorageRequest;
+}
 
 async function readClassificationCache(ticker: Pick<Ticker, "code" | "name" | "market" | "assetType">): Promise<SecurityClassification | null> {
   try {
+    await ensureClassificationCacheStorage();
     const [row] = await getDb()
       .select({ sector: securityClassificationCache.sector, industry: securityClassificationCache.industry, themes: securityClassificationCache.themes })
       .from(securityClassificationCache)
@@ -400,6 +436,7 @@ async function readClassificationCache(ticker: Pick<Ticker, "code" | "name" | "m
 
 async function writeClassificationCache(ticker: Pick<Ticker, "code" | "name" | "market" | "assetType">, classification: SecurityClassification) {
   try {
+    await ensureClassificationCacheStorage();
     const now = new Date();
     await getDb().insert(securityClassificationCache).values({
       market: ticker.market,
