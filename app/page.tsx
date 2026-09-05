@@ -2992,7 +2992,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                     if (scanInProgressRef.current) manualSelectionDuringScanRef.current = true;
                     setDirectTicker(item);
                     setSelectedKey("");
-                    setChartTimeframe("daily");
+                    setChartTimeframe("weekly");
                   }}>
                     <span className="rank">{String(index + 1).padStart(2, "0")}</span>
                     <span className="candidate-main">

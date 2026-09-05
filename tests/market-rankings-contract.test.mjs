@@ -24,4 +24,5 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(page, /\/api\/market-rankings/);
   assert.match(page, /candidate-classification/);
   assert.match(page, /NASDAQ 100/);
+  assert.match(page, /setDirectTicker\(item\);\s*setSelectedKey\(""\);\s*setChartTimeframe\("weekly"\);/s);
 });
