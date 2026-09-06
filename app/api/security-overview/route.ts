@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession, unauthorized } from "@/lib/auth";
+import { strFromU8, unzipSync } from "fflate";
 
 type NewsItem = { id: string; title: string; office: string; publishedAt: string | null; url: string };
+let dartCorpCodes: { expiresAt: number; map: Map<string, string> } | null = null;
 
 function clean(value: unknown) {
   return String(value ?? "").replace(/<[^>]*>/gu, "").replace(/\s+/gu, " ").trim();
@@ -10,6 +12,36 @@ function clean(value: unknown) {
 function dateFromNaver(value: unknown) {
   const compact = String(value ?? "");
   return /^\d{12}$/u.test(compact) ? `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)} ${compact.slice(8, 10)}:${compact.slice(10, 12)}` : null;
+}
+
+async function loadDartDescription(code: string): Promise<string | null> {
+  const apiKey = process.env.OPENDART_API_KEY?.trim();
+  if (!apiKey) return null;
+  try {
+    if (!dartCorpCodes || dartCorpCodes.expiresAt < Date.now()) {
+      const response = await fetch(`https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${encodeURIComponent(apiKey)}`, { cache: "no-store" });
+      if (!response.ok) return null;
+      const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
+      const xml = strFromU8(files["CORPCODE.xml"] ?? new Uint8Array());
+      const map = new Map<string, string>();
+      for (const item of xml.matchAll(/<list>([\s\S]*?)<\/list>/gu)) {
+        const stockCode = item[1].match(/<stock_code>\s*(\d{6})\s*<\/stock_code>/u)?.[1];
+        const corpCode = item[1].match(/<corp_code>(\d+)<\/corp_code>/u)?.[1];
+        if (stockCode && corpCode) map.set(stockCode, corpCode);
+      }
+      dartCorpCodes = { expiresAt: Date.now() + 24 * 60 * 60_000, map };
+    }
+    const corpCode = dartCorpCodes.map.get(code);
+    if (!corpCode) return null;
+    const response = await fetch(`https://opendart.fss.or.kr/api/company.json?crtfc_key=${encodeURIComponent(apiKey)}&corp_code=${corpCode}`, { cache: "no-store" });
+    if (!response.ok) return null;
+    const payload = await response.json() as { status?: string; corp_name?: string; ceo_nm?: string; induty_code_nm?: string; adres?: string; est_dt?: string; hm_url?: string };
+    if (payload.status !== "000" || !payload.corp_name) return null;
+    const details = [payload.induty_code_nm, payload.ceo_nm ? `대표 ${payload.ceo_nm}` : null, payload.est_dt ? `설립 ${payload.est_dt}` : null].filter(Boolean).join(" · ");
+    return details ? `${payload.corp_name}은(는) ${details}인 기업입니다.` : `${payload.corp_name}의 DART 기업 개요입니다.`;
+  } catch {
+    return null;
+  }
 }
 
 async function loadKoreanNews(code: string): Promise<NewsItem[]> {
@@ -40,7 +72,7 @@ async function loadDescription(code: string, market: string): Promise<string | n
     const text = clean(summary)
       .replace(/^기업개요\s*/u, "")
       .replace(/^동사는\s*/u, "");
-    return text ? text.slice(0, 260) : null;
+    return text ? text.slice(0, 260) : loadDartDescription(code);
   }
   if (market === "NASDAQ" || market === "NYSE" || market === "AMEX" || market === "US_ETF") {
     const response = await fetch(`https://api.nasdaq.com/api/company/${encodeURIComponent(code.toLowerCase())}/company-profile`, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0" }, cache: "no-store" });
