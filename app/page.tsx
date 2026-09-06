@@ -352,6 +352,7 @@ type ChartApiPayload = {
   isNasdaq100?: boolean;
   classification?: SecurityClassification;
 };
+type SecurityOverviewNews = { id: string; title: string; office: string; publishedAt: string | null; url: string };
 type ClassificationFilter = { kind: "market" | "sector" | "theme"; value: string };
 type MarketRankingsPayload = {
   items: Ticker[];
@@ -2189,6 +2190,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const manualSelectionDuringScanRef = useRef(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failures: 0 });
   const [message, setMessage] = useState("스캔 전 · 주요 시장 흐름을 확인하세요");
+  const [overviewNews, setOverviewNews] = useState<SecurityOverviewNews[]>([]);
 
   const resizeWorkspace = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     if (window.innerWidth <= 820) return;
@@ -2535,6 +2537,20 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.code, selected?.market, selected?.assetType, chartTimeframe, isMarketOverview, activeMarketWatch.id]);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!selected || isMarketOverview) { setOverviewNews([]); return; }
+    const controller = new AbortController();
+    setOverviewNews([]);
+    fetch(`/api/security-overview?code=${encodeURIComponent(selected.code)}&market=${selected.market}`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<{ news?: SecurityOverviewNews[] }> : { news: [] })
+      .then((payload) => { if (!controller.signal.aborted) setOverviewNews(payload.news ?? []); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  // `selected` is intentionally reduced to stable identifiers to avoid refetching on quote updates.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.code, selected?.market, isMarketOverview]);
+
   async function runFullScan() {
     const token = ++scanToken.current;
     scanInProgressRef.current = true;
@@ -2761,6 +2777,14 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       : priceChangePct > 0
         ? "positive"
         : "negative";
+  const overviewHigh = chart.length ? Math.max(...chart.map((point) => point.high)) : null;
+  const overviewLow = chart.length ? Math.min(...chart.map((point) => point.low)) : null;
+  const overviewHighGap = overviewHigh && detailCurrentClose > 0 ? ((detailCurrentClose - overviewHigh) / overviewHigh) * 100 : null;
+  const overviewSummary = isMarketOverview
+    ? "주요 시장 지수의 가격 흐름과 이동평균을 확인하는 화면입니다."
+    : activeClassification?.industry || activeClassification?.sector
+      ? `${activeClassification.industry ?? activeClassification.sector} 관련 ${selected.assetType === "ETF" ? "상장지수펀드" : "상장 종목"}입니다.`
+      : selected.assetType === "ETF" ? "시장 또는 테마를 추종하는 상장지수펀드입니다." : "사업 분류 정보를 확인하는 중입니다.";
 
   return (
     <main className="app-shell">
@@ -3276,6 +3300,15 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                 </article>
                 <article><span>거래량 변화</span><strong className={detailVolumeTone}>{detailVolumeStatus} {signed(detailVolumeChangePct)}</strong></article>
               </div>
+
+              {!isMarketOverview && <section className="security-overview" aria-label="종목 개요">
+                <div className="overview-summary"><span>BUSINESS SNAPSHOT</span><strong>{overviewSummary}</strong><small>{selected.name} · {selected.code} · {selected.market}</small></div>
+                <div className="overview-facts">
+                  <article><span>핵심 지표</span><strong>{formatCap(selected.marketCap)}</strong><small>시가총액 · 전일 {priceChanges.daily ? signed(priceChanges.daily.changePct, 2) : "—"}</small></article>
+                  <article><span>52주 위치</span><strong>{overviewHigh && overviewLow ? `${isUsdSecurity ? formatUsd(overviewLow) : formatPrice(overviewLow)} ~ ${isUsdSecurity ? formatUsd(overviewHigh) : formatPrice(overviewHigh)}` : "확인 중"}</strong><small>{overviewHighGap === null ? "고점 대비 계산 중" : `고점 대비 ${signed(overviewHighGap, 1)}`}</small></article>
+                  <article className="overview-news"><span>최근 이벤트</span>{overviewNews.length ? <ul>{overviewNews.slice(0, 2).map((news) => <li key={news.id}><a href={news.url} target="_blank" rel="noreferrer">{news.title}</a><small>{news.office}</small></li>)}</ul> : <small>최근 뉴스 확인 중…</small>}</article>
+                </div>
+              </section>}
 
               <div className="chart-card">
                 <div className="chart-toolbar">
