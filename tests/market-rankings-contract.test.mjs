@@ -47,4 +47,7 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(page, /setDirectTicker\(item\);\s*setSelectedKey\(""\);\s*setChartTimeframe\("weekly"\);/s);
   assert.match(page, /const confirmedTradingVolume = typeof item\.tradingVolume === "number" && item\.tradingVolume > 0/);
   assert.match(page, /secondaryMetric && <small>\{secondaryMetric\}<\/small>/);
+  assert.match(page, /const batchController = new AbortController\(\)/);
+  assert.match(page, /batchController\.abort\(\)/);
+  assert.match(page, /A single provider timeout must not reject the worker/);
 });

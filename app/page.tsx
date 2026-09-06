@@ -2555,22 +2555,33 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       const workers = Array.from({ length: workerCount }, async () => {
         while (cursor < batches.length && scanToken.current === token) {
           const batch = batches[cursor++];
-          const response = await fetch("/api/screen", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ tickers: batch, timeframe, maPeriod }),
-          });
-          if (!response.ok) {
+          const batchController = new AbortController();
+          const batchTimeout = window.setTimeout(() => batchController.abort(), 45_000);
+          try {
+            const response = await fetch("/api/screen", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ tickers: batch, timeframe, maPeriod }),
+              signal: batchController.signal,
+            });
+            if (!response.ok) {
+              failures += batch.length * conditionCount;
+            } else {
+              const payload = (await response.json()) as {
+                matches: Candidate[];
+                failures: number;
+                exchangeRate?: number;
+              };
+              matches.push(...payload.matches);
+              if (payload.exchangeRate) setExchangeRate(payload.exchangeRate);
+              failures += payload.failures;
+            }
+          } catch {
+            // A single provider timeout must not reject the worker and stop
+            // the entire scan. Count this batch as failed and continue.
             failures += batch.length * conditionCount;
-          } else {
-            const payload = (await response.json()) as {
-              matches: Candidate[];
-              failures: number;
-              exchangeRate?: number;
-            };
-            matches.push(...payload.matches);
-            if (payload.exchangeRate) setExchangeRate(payload.exchangeRate);
-            failures += payload.failures;
+          } finally {
+            window.clearTimeout(batchTimeout);
           }
           done += batch.length;
           const sorted = [...matches].sort(compareCandidates);
