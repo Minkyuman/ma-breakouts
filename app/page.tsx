@@ -3299,13 +3299,12 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                   <small className={detailGap240Pct !== null && detailGap240Pct < 0 ? "negative" : "positive"}>이격 {signed(detailGap240Pct, 2)}</small>
                 </article>
                 <article><span>거래량 변화</span><strong className={detailVolumeTone}>{detailVolumeStatus} {signed(detailVolumeChangePct)}</strong></article>
+                {!isMarketOverview && <article className="year-range-metric"><span>52주 위치</span><strong>{overviewHigh && overviewLow ? `${isUsdSecurity ? formatUsd(overviewLow) : formatPrice(overviewLow)} ~ ${isUsdSecurity ? formatUsd(overviewHigh) : formatPrice(overviewHigh)}` : "확인 중"}</strong><small>{overviewHighGap === null ? "고점 대비 계산 중" : `고점 대비 ${signed(overviewHighGap, 1)}`}</small></article>}
               </div>
 
               {!isMarketOverview && <section className="security-overview" aria-label="종목 개요">
                 <div className="overview-summary"><span>BUSINESS SNAPSHOT</span><strong>{overviewSummary}</strong><small>{selected.name} · {selected.code} · {selected.market}</small></div>
                 <div className="overview-facts">
-                  <article><span>핵심 지표</span><strong>{formatCap(selected.marketCap)}</strong><small>시가총액 · 전일 {priceChanges.daily ? signed(priceChanges.daily.changePct, 2) : "—"}</small></article>
-                  <article><span>52주 위치</span><strong>{overviewHigh && overviewLow ? `${isUsdSecurity ? formatUsd(overviewLow) : formatPrice(overviewLow)} ~ ${isUsdSecurity ? formatUsd(overviewHigh) : formatPrice(overviewHigh)}` : "확인 중"}</strong><small>{overviewHighGap === null ? "고점 대비 계산 중" : `고점 대비 ${signed(overviewHighGap, 1)}`}</small></article>
                   <article className="overview-news"><span>최근 이벤트</span>{overviewNews.length ? <ul>{overviewNews.slice(0, 2).map((news) => <li key={news.id}><a href={news.url} target="_blank" rel="noreferrer">{news.title}</a><small>{news.office}</small></li>)}</ul> : <small>최근 뉴스 확인 중…</small>}</article>
                 </div>
               </section>}

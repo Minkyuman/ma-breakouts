@@ -2692,7 +2692,7 @@ select:focus-visible {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 9px;
   margin: 20px 0 13px;
 }
@@ -2711,6 +2711,7 @@ select:focus-visible {
 .overview-summary strong { color: var(--ink); font-size: 17px; }
 .overview-summary small, .overview-facts small { color: var(--muted); }
 .overview-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.overview-facts:has(.overview-news:only-child) { grid-template-columns: minmax(0, 1fr); }
 .overview-facts article { min-width: 0; padding: 12px; border-radius: 12px; background: var(--paper); }
 .overview-facts article > span { display: block; margin-bottom: 7px; color: var(--muted); font-family: var(--font-geist-sans); letter-spacing: 0; }
 .overview-facts article > strong { display: block; overflow: hidden; color: var(--ink); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
@@ -2741,6 +2742,8 @@ select:focus-visible {
 .metric-grid strong {
   font: 650 17px var(--font-geist-mono), monospace;
 }
+
+.metric-grid .year-range-metric strong { font-size: 14px; }
 
 .metric-grid .ma-metric small {
   display: block;
