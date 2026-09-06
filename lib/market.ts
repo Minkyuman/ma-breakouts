@@ -474,6 +474,12 @@ async function fetchKoreanClassification(ticker: Pick<Ticker, "code" | "name" | 
   if (cached && cached.expiresAt > Date.now()) return cached.classification;
   const persisted = await readClassificationCache(ticker);
   if (persisted) {
+    if (!persisted.sector && /리츠|REIT/iu.test(name)) {
+      const repaired = { ...persisted, sector: "리츠(REITs)", themes: [...new Set([...(persisted.themes ?? []), "리츠"])] };
+      await writeClassificationCache(ticker, repaired);
+      koreanClassificationCache.set(`${ticker.market}:${code}`, { classification: repaired, expiresAt: Date.now() + RUNTIME_CLASSIFICATION_CACHE_TTL_MS });
+      return repaired;
+    }
     koreanClassificationCache.set(`${ticker.market}:${code}`, { classification: persisted, expiresAt: Date.now() + RUNTIME_CLASSIFICATION_CACHE_TTL_MS });
     return persisted;
   }
@@ -486,7 +492,8 @@ async function fetchKoreanClassification(ticker: Pick<Ticker, "code" | "name" | 
   const sector = html.match(/업종명\s*:\s*<a[^>]*>([^<]+)<\/a>/)?.[1]?.trim();
   const overviewHtml = html.match(/<div id="summary_info"[\s\S]*?<div class="txt_notice">/)?.[0] ?? "";
   const overview = overviewHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  const classification = { sector, themes: inferThemes(name, sector, overview) };
+  const resolvedSector = sector || (/리츠|REIT/iu.test(name) ? "리츠(REITs)" : undefined);
+  const classification = { sector: resolvedSector, themes: inferThemes(name, resolvedSector, overview) };
   if (koreanClassificationCache.size >= 500) koreanClassificationCache.delete(koreanClassificationCache.keys().next().value!);
   koreanClassificationCache.set(`${ticker.market}:${code}`, { classification, expiresAt: Date.now() + RUNTIME_CLASSIFICATION_CACHE_TTL_MS });
   await writeClassificationCache(ticker, classification);

@@ -2717,7 +2717,8 @@ select:focus-visible {
 .overview-facts article > strong { display: block; overflow: hidden; color: var(--ink); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .overview-news ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
 .overview-news li { min-width: 0; }
-.overview-news a { display: block; overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.overview-news a { display: block; overflow: hidden; color: var(--green); font-size: 13px; font-weight: 650; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--green) 45%, transparent); text-underline-offset: 3px; text-overflow: ellipsis; white-space: nowrap; }
+.overview-news a::after { content: " ↗"; font-size: 11px; text-decoration: none; }
 .overview-news li small { display: block; font-size: 11px; }
 
 .metric-grid article {
