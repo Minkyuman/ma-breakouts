@@ -2582,18 +2582,20 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
             : " · 거래소별 시총 상위 1,000 보통주";
       setMessage(`${tickers.length.toLocaleString("ko-KR")}종목 · ${timeframeLabel} · ${maLabel} 분석 중${universeLabel}`);
       const batches: Ticker[][] = [];
-      const batchSize = conditionCount >= 4 ? 8 : conditionCount === 2 ? 12 : 24;
+      // Keep provider fan-out bounded. Large batches can make the upstream
+      // history API queue requests for ~45s and make progress appear stuck.
+      const batchSize = conditionCount >= 4 ? 6 : conditionCount === 2 ? 8 : 10;
       for (let index = 0; index < tickers.length; index += batchSize) batches.push(tickers.slice(index, index + batchSize));
       let cursor = 0;
       let done = 0;
       let failures = 0;
       const matches: Candidate[] = [];
-      const workerCount = conditionCount >= 4 ? 2 : conditionCount === 2 ? 3 : 4;
+      const workerCount = conditionCount >= 4 ? 2 : conditionCount === 2 ? 2 : 3;
       const workers = Array.from({ length: workerCount }, async () => {
         while (cursor < batches.length && scanToken.current === token) {
           const batch = batches[cursor++];
           const batchController = new AbortController();
-          const batchTimeout = window.setTimeout(() => batchController.abort(), 45_000);
+          const batchTimeout = window.setTimeout(() => batchController.abort(), 20_000);
           try {
             const response = await fetch("/api/screen", {
               method: "POST",
