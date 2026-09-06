@@ -2191,6 +2191,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [progress, setProgress] = useState({ done: 0, total: 0, failures: 0 });
   const [message, setMessage] = useState("스캔 전 · 주요 시장 흐름을 확인하세요");
   const [overviewNews, setOverviewNews] = useState<SecurityOverviewNews[]>([]);
+  const [overviewDescription, setOverviewDescription] = useState<string | null>(null);
 
   const resizeWorkspace = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     if (window.innerWidth <= 820) return;
@@ -2539,12 +2540,13 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!selected || isMarketOverview) { setOverviewNews([]); return; }
+    if (!selected || isMarketOverview) { setOverviewNews([]); setOverviewDescription(null); return; }
     const controller = new AbortController();
     setOverviewNews([]);
+    setOverviewDescription(null);
     fetch(`/api/security-overview?code=${encodeURIComponent(selected.code)}&market=${selected.market}`, { signal: controller.signal, cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() as Promise<{ news?: SecurityOverviewNews[] }> : { news: [] })
-      .then((payload) => { if (!controller.signal.aborted) setOverviewNews(payload.news ?? []); })
+      .then(async (response) => response.ok ? response.json() as Promise<{ news?: SecurityOverviewNews[]; description?: string | null }> : { news: [], description: null })
+      .then((payload) => { if (!controller.signal.aborted) { setOverviewNews(payload.news ?? []); setOverviewDescription(payload.description ?? null); } })
       .catch(() => undefined);
     return () => controller.abort();
   // `selected` is intentionally reduced to stable identifiers to avoid refetching on quote updates.
@@ -2782,6 +2784,8 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const overviewHighGap = overviewHigh && detailCurrentClose > 0 ? ((detailCurrentClose - overviewHigh) / overviewHigh) * 100 : null;
   const overviewSummary = isMarketOverview
     ? "주요 시장 지수의 가격 흐름과 이동평균을 확인하는 화면입니다."
+    : overviewDescription
+      ? overviewDescription
     : activeClassification?.industry || activeClassification?.sector
       ? `${activeClassification.industry ?? activeClassification.sector} 관련 ${selected.assetType === "ETF" ? "상장지수펀드" : "상장 종목"}입니다.`
       : selected.assetType === "ETF" ? "시장 또는 테마를 추종하는 상장지수펀드입니다." : "사업 분류 정보를 확인하는 중입니다.";
@@ -3299,13 +3303,13 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                   <small className={detailGap240Pct !== null && detailGap240Pct < 0 ? "negative" : "positive"}>이격 {signed(detailGap240Pct, 2)}</small>
                 </article>
                 <article><span>거래량 변화</span><strong className={detailVolumeTone}>{detailVolumeStatus} {signed(detailVolumeChangePct)}</strong></article>
-                {!isMarketOverview && <article className="year-range-metric"><span>52주 위치</span><strong>{overviewHigh && overviewLow ? `${isUsdSecurity ? formatUsd(overviewLow) : formatPrice(overviewLow)} ~ ${isUsdSecurity ? formatUsd(overviewHigh) : formatPrice(overviewHigh)}` : "확인 중"}</strong><small>{overviewHighGap === null ? "고점 대비 계산 중" : `고점 대비 ${signed(overviewHighGap, 1)}`}</small></article>}
+                {!isMarketOverview && <article className="year-range-metric"><span>52주 위치</span><strong>{overviewHigh && overviewLow ? `${isUsdSecurity ? formatUsd(overviewLow) : `${formatPrice(overviewLow)}원`} ~ ${isUsdSecurity ? formatUsd(overviewHigh) : `${formatPrice(overviewHigh)}원`}` : "확인 중"}</strong><small className={overviewHighGap !== null && overviewHighGap < 0 ? "negative" : overviewHighGap !== null && overviewHighGap > 0 ? "positive" : ""}>{overviewHighGap === null ? "고점 대비 계산 중" : `고점 대비 ${signed(overviewHighGap, 1)}`}</small></article>}
               </div>
 
               {!isMarketOverview && <section className="security-overview" aria-label="종목 개요">
                 <div className="overview-summary"><span>BUSINESS SNAPSHOT</span><strong>{overviewSummary}</strong><small>{selected.name} · {selected.code} · {selected.market}</small></div>
                 <div className="overview-facts">
-                  <article className="overview-news"><span>최근 이벤트</span>{overviewNews.length ? <ul>{overviewNews.slice(0, 2).map((news) => <li key={news.id}><a href={news.url} target="_blank" rel="noreferrer">{news.title}</a><small>{news.office}</small></li>)}</ul> : <small>최근 뉴스 확인 중…</small>}</article>
+                  <article className="overview-news"><span>최근 이벤트</span>{overviewNews.length ? <ul>{overviewNews.slice(0, 4).map((news) => <li key={news.id}><a href={news.url} target="_blank" rel="noreferrer">{news.title}</a><small>{news.office}{news.publishedAt ? ` · ${new Date(news.publishedAt).toLocaleDateString("ko-KR")}` : " · 날짜 미확인"}</small></li>)}</ul> : <small>최근 뉴스 확인 중…</small>}</article>
                 </div>
               </section>}
 

@@ -2744,6 +2744,9 @@ select:focus-visible {
 }
 
 .metric-grid .year-range-metric strong { font-size: 14px; }
+.metric-grid .year-range-metric small { display: block; margin-top: 5px; color: var(--muted); font: 580 11px var(--font-geist-mono), monospace; }
+.metric-grid .year-range-metric small.positive { color: var(--red); }
+.metric-grid .year-range-metric small.negative { color: var(--blue); }
 
 .metric-grid .ma-metric small {
   display: block;
