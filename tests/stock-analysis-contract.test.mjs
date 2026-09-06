@@ -50,6 +50,8 @@ test("AI stock analysis is authenticated, grounded, structured, and server-only"
   assert.match(analysis, /STOCK_ANALYSIS_SECTION_ORDER/);
   assert.match(analysis, /allowedUrls\.has\(source\.url\)/);
   assert.match(analysis, /AnalysisEvidenceCard/);
+  assert.match(page, /CB·BW 오버행 점검/);
+  assert.match(page, /analysis\.convertibleOverhang\.totalPotentialShares/);
   assert.match(analysis, /analysisInstructions\(facts\)/);
   assert.match(analysis, /research_scout/);
   assert.match(analysis, /risk_reviewer/);

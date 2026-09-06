@@ -549,6 +549,18 @@ select:focus-visible {
 .analysis-fundamentals dd { margin: 5px 0 0; overflow: hidden; color: var(--ink); font: 750 11px var(--font-geist-mono), monospace; text-overflow: ellipsis; white-space: nowrap; }
 .analysis-fundamentals > a { justify-self: start; color: #20705c; font-size: 8px; font-weight: 700; text-decoration: none; }
 .analysis-fundamentals > a:hover { text-decoration: underline; }
+.analysis-overhang { border-color: rgba(181, 126, 32, .32); background: linear-gradient(135deg, #fffaf1, #fff); }
+.analysis-overhang > div > span { color: #9a6814; }
+.analysis-overhang dl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.analysis-overhang-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.analysis-overhang-list li { display: flex; align-items: center; gap: 7px; padding: 7px 8px; border: 1px solid rgba(181, 126, 32, .16); border-radius: 8px; background: rgba(255, 255, 255, .76); font-size: 8px; }
+.analysis-overhang-list li strong { color: #9a6814; font: 800 8px var(--font-geist-mono), monospace; }
+.analysis-overhang-list li span { min-width: 0; flex: 1; color: var(--muted); }
+.analysis-overhang-list li a { color: #9a6814; font-size: 8px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.analysis-overhang-list li a:hover { text-decoration: underline; }
+.analysis-overhang-empty, .analysis-overhang-note { color: var(--muted); font-size: 8px; line-height: 1.5; }
+.analysis-overhang-empty { margin: 0; }
+.analysis-overhang-note { display: block; }
 .analysis-market-intelligence { display: grid; gap: 10px; padding: 15px; border: 1px solid rgba(100, 71, 183, .22); border-radius: 14px; background: linear-gradient(135deg, #faf8ff, #fff); }
 .analysis-market-intelligence > div:first-child { display: grid; gap: 3px; }
 .analysis-market-intelligence > div:first-child > span { color: #6847b7; font: 750 8px var(--font-geist-mono), monospace; letter-spacing: .1em; }
@@ -3297,6 +3309,7 @@ footer p {
   .analysis-price-grid article span { grid-column: 1; }
   .analysis-price-grid article strong { grid-column: 2; grid-row: 1; }
   .analysis-fundamentals dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analysis-overhang dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .analysis-intelligence-grid { grid-template-columns: 1fr; }
   .analysis-sections details > div { padding-inline: 16px; }
   .analysis-scenarios > div:last-child { grid-template-columns: 1fr; }

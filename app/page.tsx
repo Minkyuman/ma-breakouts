@@ -1230,6 +1230,22 @@ function StockAnalysisDialog({ ticker, onClose }: { ticker: Ticker; onClose: () 
               </section>
             )}
 
+            {analysis.convertibleOverhang && (
+              <section className="analysis-fundamentals analysis-overhang" aria-label="CB BW 오버행 점검">
+                <div><span>CONVERTIBLE OVERHANG</span><strong>CB·BW 오버행 점검</strong><small>{analysis.convertibleOverhang.dataQuality === "verified_issuance_terms" ? "최근 5년 DART 발행결정 기준" : "DART 발행결정 확인 결과"}</small></div>
+                {analysis.convertibleOverhang.instruments.length > 0 ? <>
+                  <dl>
+                    <div><dt>잠재 신주</dt><dd>{analysis.convertibleOverhang.totalPotentialShares.toLocaleString("ko-KR")}주</dd></div>
+                    <div><dt>예상 희석률</dt><dd>{analysis.convertibleOverhang.dilutionPct === null ? "확인 불가" : `${analysis.convertibleOverhang.dilutionPct}%`}</dd></div>
+                    <div><dt>거래량 소화</dt><dd>{analysis.convertibleOverhang.volumeDays === null ? "확인 불가" : `${analysis.convertibleOverhang.volumeDays}일치`}</dd></div>
+                    <div><dt>행사가 상회</dt><dd>{analysis.convertibleOverhang.inTheMoneyCount}건</dd></div>
+                  </dl>
+                  <ul className="analysis-overhang-list">{analysis.convertibleOverhang.instruments.slice(0, 4).map((instrument) => <li key={`${instrument.kind}:${instrument.receiptNo}`}><strong>{instrument.kind}</strong><span>행사가 {instrument.exercisePrice === null ? "확인 불가" : `${formatPrice(instrument.exercisePrice)}원`} · 잠재 신주 {instrument.potentialShares === null ? "확인 불가" : `${instrument.potentialShares.toLocaleString("ko-KR")}주`}</span><a href={instrument.sourceUrl} target="_blank" rel="noreferrer">DART 원문 ↗</a></li>)}</ul>
+                </> : <p className="analysis-overhang-empty">최근 5년 내 DART CB·BW 발행결정이 확인되지 않았습니다.</p>}
+                <small className="analysis-overhang-note">발행결정 기준 잠재 물량이며, 실제 미상환 잔액은 행사·상환 공시와 최신 정기보고서 교차 확인이 필요합니다.</small>
+              </section>
+            )}
+
             {analysis.marketIntelligence && (
               <section className="analysis-market-intelligence">
                 <div><span>VERIFIED MARKET INTELLIGENCE</span><strong>수급 · 컨센서스 · 리서치 · 최근 뉴스</strong><small>{analysis.marketIntelligence.asOf ? `기준 ${analysis.marketIntelligence.asOf}` : "최근 공개 정보 기준"}</small></div>
