@@ -37,7 +37,9 @@ async function loadDescription(code: string, market: string): Promise<string | n
     if (!response.ok) return null;
     const html = await response.text();
     const summary = html.match(/<div id="summary_info"[\s\S]*?<div class="txt_notice">/)?.[0] ?? "";
-    const text = clean(summary);
+    const text = clean(summary)
+      .replace(/^기업개요\s*/u, "")
+      .replace(/^동사는\s*/u, "");
     return text ? text.slice(0, 260) : null;
   }
   if (market === "NASDAQ" || market === "NYSE" || market === "AMEX" || market === "US_ETF") {
