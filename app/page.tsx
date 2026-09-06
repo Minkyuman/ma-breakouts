@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AuthUser } from "@/lib/auth";
@@ -2163,6 +2163,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [range, setRange] = useState(80);
   const [trendLineMode, setTrendLineMode] = useState(false);
   const [chartCopyStatus, setChartCopyStatus] = useState<"idle" | "copied" | "unsupported">("idle");
+  const [workspaceSplit, setWorkspaceSplit] = useState(390);
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [priceChanges, setPriceChanges] = useState<PriceChangeSet>(EMPTY_PRICE_CHANGES);
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
@@ -2182,11 +2183,29 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const closeLeague = useCallback(() => setLeagueOpen(false), []);
   const closeFavorites = useCallback(() => setFavoritesOpen(false), []);
   const chartPanelRef = useRef<HTMLElement>(null);
+  const workspaceRef = useRef<HTMLElement>(null);
   const scanToken = useRef(0);
   const scanInProgressRef = useRef(false);
   const manualSelectionDuringScanRef = useRef(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failures: 0 });
   const [message, setMessage] = useState("스캔 전 · 주요 시장 흐름을 확인하세요");
+
+  const resizeWorkspace = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (window.innerWidth <= 820) return;
+    const startX = event.clientX;
+    const startWidth = workspaceSplit;
+    const move = (moveEvent: PointerEvent) => {
+      const nextWidth = Math.min(620, Math.max(280, startWidth + moveEvent.clientX - startX));
+      setWorkspaceSplit(nextWidth);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end, { once: true });
+    event.preventDefault();
+  }, [workspaceSplit]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2908,7 +2927,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
         <article><span>분석 실패</span><strong>{progress.failures}</strong><small>최근 실행</small></article>
       </section>
 
-      <section className="workspace">
+      <section ref={workspaceRef} className="workspace" style={{ gridTemplateColumns: `${workspaceSplit}px minmax(0, 1fr)` }}>
         <aside className="candidate-panel">
           <div className="panel-heading">
             <div>
@@ -3133,6 +3152,10 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
               })}
             </div>
           )}
+          <button type="button" className="workspace-resizer" aria-label="목록과 상세 정보 너비 조절" onPointerDown={resizeWorkspace} onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") { event.preventDefault(); setWorkspaceSplit((width) => Math.max(280, width - 20)); }
+            if (event.key === "ArrowRight") { event.preventDefault(); setWorkspaceSplit((width) => Math.min(620, width + 20)); }
+          }} />
         </aside>
 
         <section ref={chartPanelRef} className="chart-panel">

@@ -50,4 +50,8 @@ test("market rankings expose the four ranking metrics without bypassing the logi
   assert.match(page, /const batchController = new AbortController\(\)/);
   assert.match(page, /batchController\.abort\(\)/);
   assert.match(page, /A single provider timeout must not reject the worker/);
+  assert.match(page, /const \[workspaceSplit, setWorkspaceSplit\] = useState\(390\)/);
+  assert.match(page, /gridTemplateColumns: `\$\{workspaceSplit\}px minmax\(0, 1fr\)`/);
+  assert.match(page, /className="workspace-resizer" aria-label="목록과 상세 정보 너비 조절"/);
+  assert.match(page, /Math\.min\(620, Math\.max\(280/);
 });

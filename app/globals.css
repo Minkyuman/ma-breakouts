@@ -1943,11 +1943,45 @@ select:focus-visible {
 }
 
 .candidate-panel {
+  position: relative;
   display: flex;
   min-height: 0;
   flex-direction: column;
   border-right: 1px solid var(--line);
   background: #f7f7f3;
+}
+
+.workspace-resizer {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  right: -6px;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.workspace-resizer::after {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 3px;
+  height: 54px;
+  border-radius: 999px;
+  background: rgba(31, 89, 75, .3);
+  content: "";
+  transform: translateY(-50%);
+  transition: background .15s ease, height .15s ease;
+}
+
+.workspace-resizer:hover::after,
+.workspace-resizer:focus-visible::after {
+  height: 76px;
+  background: var(--green);
 }
 
 .panel-heading {
@@ -3245,9 +3279,12 @@ footer p {
   }
 
   .candidate-panel {
+    position: relative;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
+
+  .workspace-resizer { display: none; }
 
   .candidate-list {
     max-height: 330px;
