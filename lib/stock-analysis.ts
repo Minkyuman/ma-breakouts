@@ -77,6 +77,29 @@ export type MarketIntelligence = {
   recentNews: Array<{ id: string; title: string; summary: string; office: string; publishedAt: string | null; url: string; directMention: boolean }>;
 };
 
+export type ConvertibleOverhang = {
+  asOf: string;
+  source: { title: string; url: string };
+  instruments: Array<{
+    kind: "CB" | "BW";
+    receiptNo: string;
+    reportDate: string;
+    amount: number | null;
+    exercisePrice: number | null;
+    potentialShares: number | null;
+    exerciseStart: string | null;
+    exerciseEnd: string | null;
+    refixingFloor: number | null;
+    sourceUrl: string;
+  }>;
+  totalPotentialShares: number;
+  totalNominalAmount: number;
+  dilutionPct: number | null;
+  volumeDays: number | null;
+  inTheMoneyCount: number;
+  dataQuality: "verified_issuance_terms" | "not_found";
+};
+
 export type StockDeepAnalysis = {
   security: {
     code: string;
@@ -97,6 +120,7 @@ export type StockDeepAnalysis = {
   };
   fundamentals: FundamentalSnapshot | null;
   marketIntelligence: MarketIntelligence | null;
+  convertibleOverhang: ConvertibleOverhang | null;
   sections: StockAnalysisSection[];
   scenarios: Array<{
     name: string;
@@ -149,7 +173,7 @@ type ResearchAgentBrief = {
   counterThesis: string[];
 };
 
-type RawAnalysis = Omit<StockDeepAnalysis, "security" | "fundamentals" | "marketIntelligence" | "evidence" | "quality" | "generatedAt" | "model" | "cached">;
+type RawAnalysis = Omit<StockDeepAnalysis, "security" | "fundamentals" | "marketIntelligence" | "convertibleOverhang" | "evidence" | "quality" | "generatedAt" | "model" | "cached">;
 
 const ANALYSIS_CACHE_MS = 30 * 60_000;
 const analysisCache = new Map<string, { expiresAt: number; analysis: StockDeepAnalysis }>();
@@ -705,6 +729,49 @@ async function fetchDartDisclosures(ticker: Ticker): Promise<DartDisclosure[]> {
   }] : []);
 }
 
+type DartConvertibleDecision = {
+  rcept_no?: string;
+  bddd?: string;
+  bd_fta?: string;
+  cv_prc?: string;
+  cvisstk_cnt?: string;
+  cvrqpd_bgd?: string;
+  cvrqpd_edd?: string;
+  act_mktprcfl_cvprc_lwtrsprc?: string;
+  ex_prc?: string;
+  nstk_isstk_cnt?: string;
+  expd_bgd?: string;
+  expd_edd?: string;
+  act_mktprcfl_cvprc_lwtrsprc?: string;
+};
+
+async function fetchDartConvertibleOverhang(ticker: Ticker, latestClose: number, averageVolume: number) : Promise<ConvertibleOverhang | null> {
+  const apiKey = process.env.OPENDART_API_KEY?.trim();
+  if (!apiKey || ticker.assetType !== "STOCK" || (ticker.market !== "KOSPI" && ticker.market !== "KOSDAQ")) return null;
+  const corpCode = (await loadDartCorpCodes(apiKey)).get(ticker.code);
+  if (!corpCode) return null;
+  const end = new Date();
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - 5);
+  const base = new URLSearchParams({ crtfc_key: apiKey, corp_code: corpCode, bgn_de: dateCompact(start), end_de: dateCompact(end) });
+  const load = async (endpoint: string) => {
+    const response = await fetch(`https://opendart.fss.or.kr/api/${endpoint}?${base.toString()}`, { cache: "no-store" });
+    if (!response.ok) return [] as DartConvertibleDecision[];
+    const payload = await response.json() as { status?: string; list?: DartConvertibleDecision[] };
+    return payload.status === "000" ? (payload.list ?? []) : [];
+  };
+  const [cbRows, bwRows] = await Promise.all([load("cvbdIsDecsn.json"), load("bdwtIsDecsn.json")]);
+  const instruments = [
+    ...cbRows.map((row) => ({ kind: "CB" as const, amount: numberValue(row.bd_fta), exercisePrice: numberValue(row.cv_prc), potentialShares: numberValue(row.cvisstk_cnt), exerciseStart: row.cvrqpd_bgd ?? null, exerciseEnd: row.cvrqpd_edd ?? null, refixingFloor: numberValue(row.act_mktprcfl_cvprc_lwtrsprc), receiptNo: row.rcept_no ?? "", reportDate: row.bddd ?? "" })),
+    ...bwRows.map((row) => ({ kind: "BW" as const, amount: numberValue(row.bd_fta), exercisePrice: numberValue(row.ex_prc), potentialShares: numberValue(row.nstk_isstk_cnt), exerciseStart: row.expd_bgd ?? null, exerciseEnd: row.expd_edd ?? null, refixingFloor: numberValue(row.act_mktprcfl_cvprc_lwtrsprc), receiptNo: row.rcept_no ?? "", reportDate: row.bddd ?? "" })),
+  ].filter((row) => row.receiptNo && (row.amount !== null || row.potentialShares !== null)).slice(0, 20).map((row) => ({ ...row, sourceUrl: `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${encodeURIComponent(row.receiptNo)}` }));
+  if (!instruments.length) return { asOf: end.toISOString().slice(0, 10), source: { title: "금융감독원 전자공시시스템 DART", url: "https://dart.fss.or.kr/" }, instruments: [], totalPotentialShares: 0, totalNominalAmount: 0, dilutionPct: null, volumeDays: null, inTheMoneyCount: 0, dataQuality: "not_found" };
+  const totalPotentialShares = instruments.reduce((sum, row) => sum + (row.potentialShares ?? 0), 0);
+  const totalNominalAmount = instruments.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+  const estimatedShares = ticker.marketCap && latestClose > 0 ? ticker.marketCap / latestClose : null;
+  return { asOf: end.toISOString().slice(0, 10), source: { title: "금융감독원 전자공시시스템 DART", url: "https://dart.fss.or.kr/" }, instruments, totalPotentialShares, totalNominalAmount, dilutionPct: estimatedShares && totalPotentialShares ? Number((totalPotentialShares / estimatedShares * 100).toFixed(2)) : null, volumeDays: averageVolume > 0 && totalPotentialShares ? Number((totalPotentialShares / averageVolume).toFixed(1)) : null, inTheMoneyCount: instruments.filter((row) => row.exercisePrice !== null && latestClose > row.exercisePrice).length, dataQuality: "verified_issuance_terms" };
+}
+
 async function fetchKoreanMarketIntelligence(ticker: Ticker): Promise<MarketIntelligence | null> {
   // Naver provides the same ticker-level news, flow and research feed for Korean ETFs.
   // DART is still intentionally limited to listed operating companies below.
@@ -755,7 +822,9 @@ async function factPack(ticker: Ticker) {
   const weekly = withMovingAverages(aggregateCandles(dailyRows, "weekly"));
   const monthly = withMovingAverages(aggregateCandles(dailyRows, "monthly"));
   if (!daily.length) throw new Error("분석에 필요한 가격 이력이 없습니다.");
-  const [classification, exchangeRate, fundamentals, marketIntelligence, dartDisclosures] = await Promise.all([
+  const latest = daily.at(-1)!;
+  const averageDailyVolume = daily.slice(-20).reduce((sum, row) => sum + row.volume, 0) / Math.max(1, Math.min(20, daily.length));
+  const [classification, exchangeRate, fundamentals, marketIntelligence, dartDisclosures, convertibleOverhang] = await Promise.all([
     fetchSecurityClassification(ticker).catch(() => ({ sector: ticker.sector, industry: ticker.industry, themes: ticker.themes })),
     ticker.currency === "USD" ? fetchUsdKrwRate().catch(() => null) : Promise.resolve(null),
     fetchFundamentals(ticker),
@@ -763,6 +832,7 @@ async function factPack(ticker: Ticker) {
       ? fetchKoreanMarketIntelligence(ticker).catch(() => null)
       : ticker.assetType !== "INDEX" ? fetchUsMarketIntelligence(ticker).catch(() => null) : Promise.resolve(null),
     ticker.market === "KOSPI" || ticker.market === "KOSDAQ" ? fetchDartDisclosures(ticker).catch(() => [] as DartDisclosure[]) : Promise.resolve([] as DartDisclosure[]),
+    ticker.market === "KOSPI" || ticker.market === "KOSDAQ" ? fetchDartConvertibleOverhang(ticker, latest.close, averageDailyVolume).catch(() => null) : Promise.resolve(null),
   ]);
   const [secFilings, usPeers] = ticker.assetType === "STOCK" && !(ticker.market === "KOSPI" || ticker.market === "KOSDAQ")
     ? await Promise.all([
@@ -770,7 +840,6 @@ async function factPack(ticker: Ticker) {
       fetchUsPeerSnapshots(ticker, classification).catch(() => [] as UsPeerSnapshot[]),
     ])
     : [[], []] as const;
-  const latest = daily.at(-1)!;
   const known = knownSources(ticker);
   const marketSource = known.find((source) => source.id === "M1")!;
   const fundamentalSource = fundamentals
@@ -807,6 +876,11 @@ async function factPack(ticker: Ticker) {
       period: "최근 뉴스", asOf: news.publishedAt, sourceId: `N${index + 1}`, sourceTitle: `네이버 증권 뉴스 · ${news.office}`,
       sourceUrl: news.url, sourceTier: "market" as const,
     })) ?? []),
+    ...(convertibleOverhang && convertibleOverhang.instruments.length ? [{
+      id: "C1", category: "company" as const, claim: "DART CB·BW 발행조건 기준 잠재 오버행",
+      value: `잠재 신주 ${convertibleOverhang.totalPotentialShares.toLocaleString("ko-KR")}주 · 희석률 ${convertibleOverhang.dilutionPct === null ? "확인 불가" : `${convertibleOverhang.dilutionPct}%`} · 평균 거래량 ${convertibleOverhang.volumeDays === null ? "확인 불가" : `${convertibleOverhang.volumeDays}일치`}`,
+      period: "최근 5년 발행결정", asOf: convertibleOverhang.asOf, sourceId: "C1", sourceTitle: convertibleOverhang.source.title, sourceUrl: convertibleOverhang.instruments[0].sourceUrl, sourceTier: "primary" as const,
+    }] : []),
     ...secFilings.map((filing, index) => ({
       id: `S${index + 1}`, category: "company" as const, claim: `SEC ${filing.form} 제출`, value: `${filing.form}${filing.reportDate ? ` · 보고기간 ${filing.reportDate}` : ""}`,
       period: filing.form, asOf: filing.filingDate || null, sourceId: `S${index + 1}`, sourceTitle: "SEC EDGAR 원문", sourceUrl: filing.url, sourceTier: "primary" as const,
@@ -848,6 +922,7 @@ async function factPack(ticker: Ticker) {
     },
     fundamentals,
     marketIntelligence,
+    convertibleOverhang,
     knownSources: [
       ...known,
       ...(fundamentalSource ? [fundamentalSource] : []),
@@ -900,7 +975,8 @@ const systemPrompt = `당신은 한국어로 작성하는 수석 주식 애널�
 16. JSON만 출력하고, opinion 값은 반드시 STRONG_BUY, BUY, HOLD, SELL 중 하나를 정확히 사용한다. confidence는 % 기호 없는 0~100 숫자로 출력한다.
 17. 결론을 확정적으로 표현하지 않는다. bullish 논지와 bearish 논지를 모두 catalyst_watch 또는 action_plan에 반영하고, 각각의 무효화 조건을 명시한다.
 18. 미국 보통주에서 SEC 10-K·10-Q·8-K 및 피어 근거 카드가 제공되면, 사업부·가이던스·계약·위험요인은 해당 원문을 우선 인용하고 피어 수치는 동일 공시 기준기간인지 확인한 뒤 비교한다. 피어 카드가 없으면 비교 수치를 만들지 않는다.
-19. 한국 종목에서 DART 근거 카드(D#)는 회사의 공식 공시이므로 사업·계약·실적·위험의 1차 근거로 우선 반영한다. 최근 뉴스(N#)는 제목·요약만으로 사실을 확정하지 말고, 직접 언급 여부와 공시 교차 확인 여부를 구분해 catalyst_watch와 business_reality에 반영한다.`;
+19. 한국 종목에서 DART 근거 카드(D#)는 회사의 공식 공시이므로 사업·계약·실적·위험의 1차 근거로 우선 반영한다. 최근 뉴스(N#)는 제목·요약만으로 사실을 확정하지 말고, 직접 언급 여부와 공시 교차 확인 여부를 구분해 catalyst_watch와 business_reality에 반영한다.
+20. 한국 종목에서 C1 카드가 제공되면 CB·BW의 발행조건 기준 잠재 오버행을 반드시 평가한다. 잠재 신주·희석률·평균 거래량 소화일수·현재가의 행사/전환가액 상회 여부를 언급하되, 카드가 '발행조건 기준'이면 실제 미상환 잔액으로 단정하지 말고 행사·상환 여부 확인 필요성을 명시한다.`;
 
 function normalizeOpinion(value: unknown): RawAnalysis["opinion"] | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -1366,6 +1442,7 @@ async function requestAnalysis(ticker: Ticker, model: string): Promise<StockDeep
     },
     fundamentals: facts.fundamentals,
     marketIntelligence: facts.marketIntelligence,
+    convertibleOverhang: facts.convertibleOverhang,
     evidence: facts.evidence,
     quality,
     generatedAt: new Date().toISOString(),

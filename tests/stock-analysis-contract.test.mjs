@@ -27,6 +27,12 @@ test("AI stock analysis is authenticated, grounded, structured, and server-only"
   assert.match(analysis, /fetchSecurityClassification/);
   assert.match(analysis, /fetchKoreanFundamentals/);
   assert.match(analysis, /fetchDartDisclosures/);
+  assert.match(analysis, /fetchDartConvertibleOverhang/);
+  assert.match(analysis, /cvbdIsDecsn\.json/);
+  assert.match(analysis, /bdwtIsDecsn\.json/);
+  assert.match(analysis, /totalPotentialShares/);
+  assert.match(analysis, /volumeDays/);
+  assert.match(analysis, /CB·BW의 발행조건 기준 잠재 오버행/);
   assert.match(analysis, /corpCode\.xml/);
   assert.match(analysis, /OpenDART 법인코드 조회 실패/);
   assert.match(analysis, /fetchUsFundamentals/);
