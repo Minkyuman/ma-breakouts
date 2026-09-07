@@ -792,6 +792,10 @@ export async function fetchDailyChart(code: string, years: number, useCache = tr
 }
 
 const US_CHART_CACHE_MS = 5 * 60_000;
+// A monthly MA10 signal changes only with the in-progress monthly candle. Keep
+// the persisted candle fresh during a session, without re-downloading every
+// US ticker every time a user re-runs the same market scan.
+const US_MONTHLY_SCREEN_CACHE_MS = 30 * 60_000;
 const usChartCache = new Map<string, { expiresAt: number; rows: DailyRow[] }>();
 const usChartRequests = new Map<string, Promise<DailyRow[]>>();
 let usMonthlyHistoryStorageRequest: Promise<void> | null = null;
@@ -893,21 +897,32 @@ export async function fetchTickerDailyChart(ticker: Pick<Ticker, "code" | "marke
     : fetchUsDailyChart(ticker.code, years, ticker.assetType, useCache);
 }
 
-async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Promise<DailyRow[]> {
+type UsMonthlyHistorySnapshot = { rows: DailyRow[]; fetchedAt: Date | null };
+
+async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
   try {
     await ensureUsMonthlyHistoryStorage();
     const rows = await getDb().select().from(usMonthlyHistory)
       .where(and(eq(usMonthlyHistory.market, ticker.market), eq(usMonthlyHistory.code, ticker.code.toUpperCase())))
       .orderBy(sql`${usMonthlyHistory.period} asc`);
-    return rows.flatMap((row) => {
+    const history = rows.flatMap((row) => {
       const rawPeriod = row.period as unknown;
       const period = rawPeriod instanceof Date ? rawPeriod.toISOString().slice(0, 10) : String(rawPeriod);
       if (!/^\d{4}-\d{2}-\d{2}$/u.test(period)) return [];
       return [{ localDate: period.replaceAll("-", ""), openPrice: row.open, highPrice: row.high, lowPrice: row.low, closePrice: row.close, accumulatedTradingVolume: row.volume }];
     });
+    const rawFetchedAt = rows.at(-1)?.fetchedAt as unknown;
+    const fetchedAt = rawFetchedAt instanceof Date
+      ? rawFetchedAt
+      : rawFetchedAt ? new Date(String(rawFetchedAt)) : null;
+    return { rows: history, fetchedAt: fetchedAt && !Number.isNaN(fetchedAt.getTime()) ? fetchedAt : null };
   } catch {
-    return [];
+    return { rows: [], fetchedAt: null };
   }
+}
+
+async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Promise<DailyRow[]> {
+  return (await readUsMonthlyHistorySnapshot(ticker)).rows;
 }
 
 async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[], source = "nasdaq") {
@@ -1018,6 +1033,33 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
     return complete;
   }
   await writeUsMonthlyHistory(ticker, freshMonthly);
+  return merged;
+}
+
+async function fetchUsMonthlyScreenChart(
+  ticker: Pick<Ticker, "code" | "market" | "assetType">,
+  maPeriod: MovingAveragePeriod,
+): Promise<DailyRow[]> {
+  const cached = await readUsMonthlyHistorySnapshot(ticker);
+  const hasEnoughHistory = cached.rows.length >= maPeriod + 1;
+  const isFresh = cached.fetchedAt !== null && Date.now() - cached.fetchedAt.getTime() < US_MONTHLY_SCREEN_CACHE_MS;
+  if (hasEnoughHistory && isFresh) return cached.rows;
+
+  // MA10 needs only three years of daily bars to create a reliable rolling
+  // monthly candle. Persist the resulting months, so the next full scan reads
+  // PostgreSQL instead of issuing one Nasdaq request per security again.
+  const daily = await fetchUsDailyChart(ticker.code, historyYears("monthly", maPeriod), ticker.assetType);
+  const freshMonthly = aggregateCandles(daily, "monthly").map((candle) => ({
+    localDate: candle.date.replaceAll("-", ""),
+    openPrice: candle.open,
+    highPrice: candle.high,
+    lowPrice: candle.low,
+    closePrice: candle.close,
+    accumulatedTradingVolume: candle.volume,
+  }));
+  const merged = [...new Map([...cached.rows, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()]
+    .sort((left, right) => left.localDate.localeCompare(right.localDate));
+  if (freshMonthly.length) await writeUsMonthlyHistory(ticker, merged, "nasdaq");
   return merged;
 }
 
@@ -1235,6 +1277,8 @@ export async function screenTicker(
   const isUsTicker = ticker.market !== "KOSPI" && ticker.market !== "KOSDAQ";
   const daily = isUsTicker && timeframe === "monthly" && maPeriod === 240
     ? await fetchUsMonthlyChart(ticker)
+    : isUsTicker && timeframe === "monthly"
+      ? await fetchUsMonthlyScreenChart(ticker, maPeriod)
     : await fetchTickerDailyChart(ticker, historyYears(timeframe, maPeriod));
   return screenCandles(ticker, aggregateCandles(daily, timeframe), maPeriod, timeframe);
 }

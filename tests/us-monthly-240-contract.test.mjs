@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("US monthly 240 history is split and durably cached", async () => {
+test("US monthly screening history is durably cached for MA10 and MA240", async () => {
   const [market, schema, chart] = await Promise.all([
     readFile(new URL("../lib/market.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
@@ -16,6 +16,8 @@ test("US monthly 240 history is split and durably cached", async () => {
   assert.match(market, /query1\.finance\.yahoo\.com\/v8\/finance\/chart/);
   assert.match(market, /TIME_SERIES_MONTHLY_ADJUSTED/);
   assert.match(market, /usMonthlyHistory/);
+  assert.match(market, /fetchUsMonthlyScreenChart/);
+  assert.match(market, /US_MONTHLY_SCREEN_CACHE_MS = 30 \* 60_000/);
   assert.match(schema, /export const usMonthlyHistory = pgTable\(/);
   assert.match(schema, /us_monthly_history_market_code_period_unique/);
   assert.match(chart, /fetchUsMonthlyChart\(ticker\)/);
