@@ -17,8 +17,11 @@ test("US monthly screening history is durably cached for MA10 and MA240", async 
   assert.match(market, /TIME_SERIES_MONTHLY_ADJUSTED/);
   assert.match(market, /usMonthlyHistory/);
   assert.match(market, /fetchUsMonthlyScreenChart/);
+  assert.match(market, /fetchUsWeeklyScreenChart/);
   assert.match(market, /US_MONTHLY_SCREEN_CACHE_MS = 30 \* 60_000/);
   assert.match(schema, /export const usMonthlyHistory = pgTable\(/);
   assert.match(schema, /us_monthly_history_market_code_period_unique/);
+  assert.match(schema, /export const usWeeklyHistory = pgTable\(/);
+  assert.match(schema, /us_weekly_history_market_code_period_unique/);
   assert.match(chart, /fetchUsMonthlyChart\(ticker\)/);
 });

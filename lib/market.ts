@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { marketSearchIndex, securityClassificationCache, usMonthlyHistory } from "@/db/schema";
+import { marketSearchIndex, securityClassificationCache, usMonthlyHistory, usWeeklyHistory } from "@/db/schema";
 
 export type Region = "kr" | "us";
 export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | "NYSE" | "AMEX" | "US_ETF" | "GLOBAL";
@@ -799,6 +799,7 @@ const US_MONTHLY_SCREEN_CACHE_MS = 30 * 60_000;
 const usChartCache = new Map<string, { expiresAt: number; rows: DailyRow[] }>();
 const usChartRequests = new Map<string, Promise<DailyRow[]>>();
 let usMonthlyHistoryStorageRequest: Promise<void> | null = null;
+let usWeeklyHistoryStorageRequest: Promise<void> | null = null;
 
 async function ensureUsMonthlyHistoryStorage() {
   if (usMonthlyHistoryStorageRequest) return usMonthlyHistoryStorageRequest;
@@ -828,6 +829,36 @@ async function ensureUsMonthlyHistoryStorage() {
     throw error;
   });
   return usMonthlyHistoryStorageRequest;
+}
+
+async function ensureUsWeeklyHistoryStorage() {
+  if (usWeeklyHistoryStorageRequest) return usWeeklyHistoryStorageRequest;
+  usWeeklyHistoryStorageRequest = (async () => {
+    const database = getDb();
+    await database.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "us_weekly_history" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "market" varchar(16) NOT NULL,
+        "code" varchar(16) NOT NULL,
+        "period" date NOT NULL,
+        "open" double precision NOT NULL,
+        "high" double precision NOT NULL,
+        "low" double precision NOT NULL,
+        "close" double precision NOT NULL,
+        "volume" double precision DEFAULT 0 NOT NULL,
+        "source" varchar(32) DEFAULT 'nasdaq' NOT NULL,
+        "fetched_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+      )
+    `));
+    await database.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS "us_weekly_history_market_code_period_unique" ON "us_weekly_history" ("market", "code", "period")`));
+    await database.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "us_weekly_history_code_period_idx" ON "us_weekly_history" ("market", "code", "period")`));
+    await database.execute(sql.raw(`ALTER TABLE "us_weekly_history" ENABLE ROW LEVEL SECURITY`));
+  })().catch((error) => {
+    usWeeklyHistoryStorageRequest = null;
+    throw error;
+  });
+  return usWeeklyHistoryStorageRequest;
 }
 
 async function fetchUsDailyChartWindowUncached(code: string, startDate: Date, endDate: Date, assetType: AssetType): Promise<DailyRow[]> {
@@ -942,6 +973,48 @@ async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, ro
     });
   } catch {
     // Historical caching is an optimization; provider data remains usable if DB is unavailable.
+  }
+}
+
+async function readUsWeeklyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
+  try {
+    await ensureUsWeeklyHistoryStorage();
+    const rows = await getDb().select().from(usWeeklyHistory)
+      .where(and(eq(usWeeklyHistory.market, ticker.market), eq(usWeeklyHistory.code, ticker.code.toUpperCase())))
+      .orderBy(sql`${usWeeklyHistory.period} asc`);
+    const history = rows.flatMap((row) => {
+      const rawPeriod = row.period as unknown;
+      const period = rawPeriod instanceof Date ? rawPeriod.toISOString().slice(0, 10) : String(rawPeriod);
+      if (!/^\d{4}-\d{2}-\d{2}$/u.test(period)) return [];
+      return [{ localDate: period.replaceAll("-", ""), openPrice: row.open, highPrice: row.high, lowPrice: row.low, closePrice: row.close, accumulatedTradingVolume: row.volume }];
+    });
+    const rawFetchedAt = rows.at(-1)?.fetchedAt as unknown;
+    const fetchedAt = rawFetchedAt instanceof Date
+      ? rawFetchedAt
+      : rawFetchedAt ? new Date(String(rawFetchedAt)) : null;
+    return { rows: history, fetchedAt: fetchedAt && !Number.isNaN(fetchedAt.getTime()) ? fetchedAt : null };
+  } catch {
+    return { rows: [], fetchedAt: null };
+  }
+}
+
+async function writeUsWeeklyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[], source = "nasdaq") {
+  if (!rows.length) return;
+  try {
+    await ensureUsWeeklyHistoryStorage();
+    const now = new Date();
+    await getDb().insert(usWeeklyHistory).values(rows.map((row) => ({
+      market: ticker.market,
+      code: ticker.code.toUpperCase(),
+      period: `${row.localDate.slice(0, 4)}-${row.localDate.slice(4, 6)}-${row.localDate.slice(6, 8)}`,
+      open: Number(row.openPrice), high: Number(row.highPrice), low: Number(row.lowPrice), close: Number(row.closePrice), volume: Number(row.accumulatedTradingVolume ?? 0),
+      source, fetchedAt: now, updatedAt: now,
+    }))).onConflictDoUpdate({
+      target: [usWeeklyHistory.market, usWeeklyHistory.code, usWeeklyHistory.period],
+      set: { open: sql`excluded.open`, high: sql`excluded.high`, low: sql`excluded.low`, close: sql`excluded.close`, volume: sql`excluded.volume`, fetchedAt: now, updatedAt: now },
+    });
+  } catch {
+    // Screening remains available when historical caching is temporarily unavailable.
   }
 }
 
@@ -1060,6 +1133,33 @@ async function fetchUsMonthlyScreenChart(
   const merged = [...new Map([...cached.rows, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()]
     .sort((left, right) => left.localDate.localeCompare(right.localDate));
   if (freshMonthly.length) await writeUsMonthlyHistory(ticker, merged, "nasdaq");
+  return merged;
+}
+
+async function fetchUsWeeklyScreenChart(
+  ticker: Pick<Ticker, "code" | "market" | "assetType">,
+  maPeriod: MovingAveragePeriod,
+): Promise<DailyRow[]> {
+  const cached = await readUsWeeklyHistorySnapshot(ticker);
+  const hasEnoughHistory = cached.rows.length >= maPeriod + 1;
+  const isFresh = cached.fetchedAt !== null && Date.now() - cached.fetchedAt.getTime() < US_MONTHLY_SCREEN_CACHE_MS;
+  if (hasEnoughHistory && isFresh) return cached.rows;
+
+  // Persist the weekly candles rather than raw daily rows. This keeps a
+  // seven-year MA240 cache compact while allowing weekly scans to avoid the
+  // per-ticker Nasdaq historical download on repeated runs.
+  const daily = await fetchUsDailyChart(ticker.code, historyYears("weekly", maPeriod), ticker.assetType);
+  const freshWeekly = aggregateCandles(daily, "weekly").map((candle) => ({
+    localDate: candle.date.replaceAll("-", ""),
+    openPrice: candle.open,
+    highPrice: candle.high,
+    lowPrice: candle.low,
+    closePrice: candle.close,
+    accumulatedTradingVolume: candle.volume,
+  }));
+  const merged = [...new Map([...cached.rows, ...freshWeekly].map((row) => [row.localDate, row])).values()]
+    .sort((left, right) => left.localDate.localeCompare(right.localDate));
+  if (freshWeekly.length) await writeUsWeeklyHistory(ticker, merged);
   return merged;
 }
 
@@ -1279,6 +1379,8 @@ export async function screenTicker(
     ? await fetchUsMonthlyChart(ticker)
     : isUsTicker && timeframe === "monthly"
       ? await fetchUsMonthlyScreenChart(ticker, maPeriod)
+      : isUsTicker && timeframe === "weekly"
+        ? await fetchUsWeeklyScreenChart(ticker, maPeriod)
     : await fetchTickerDailyChart(ticker, historyYears(timeframe, maPeriod));
   return screenCandles(ticker, aggregateCandles(daily, timeframe), maPeriod, timeframe);
 }
