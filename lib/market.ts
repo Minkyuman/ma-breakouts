@@ -899,7 +899,12 @@ async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Pr
     const rows = await getDb().select().from(usMonthlyHistory)
       .where(and(eq(usMonthlyHistory.market, ticker.market), eq(usMonthlyHistory.code, ticker.code.toUpperCase())))
       .orderBy(sql`${usMonthlyHistory.period} asc`);
-    return rows.map((row) => ({ localDate: row.period.replaceAll("-", ""), openPrice: row.open, highPrice: row.high, lowPrice: row.low, closePrice: row.close, accumulatedTradingVolume: row.volume }));
+    return rows.flatMap((row) => {
+      const rawPeriod = row.period as unknown;
+      const period = rawPeriod instanceof Date ? rawPeriod.toISOString().slice(0, 10) : String(rawPeriod);
+      if (!/^\d{4}-\d{2}-\d{2}$/u.test(period)) return [];
+      return [{ localDate: period.replaceAll("-", ""), openPrice: row.open, highPrice: row.high, lowPrice: row.low, closePrice: row.close, accumulatedTradingVolume: row.volume }];
+    });
   } catch {
     return [];
   }
@@ -927,11 +932,15 @@ async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, ro
 
 export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market" | "assetType">): Promise<DailyRow[]> {
   const cached = await readUsMonthlyHistory(ticker);
-  const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType);
+  const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType).catch(() => []);
   const freshMonthly = aggregateCandles(current, "monthly").map((candle) => ({ localDate: candle.date.replaceAll("-", ""), openPrice: candle.open, highPrice: candle.high, lowPrice: candle.low, closePrice: candle.close, accumulatedTradingVolume: candle.volume }));
   const merged = [...new Map([...cached, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
   if (merged.length < 250) {
-    const longDaily = await fetchUsDailyChartUncached(ticker.code, 24, ticker.assetType);
+    const longDaily = await fetchUsDailyChartUncached(ticker.code, 24, ticker.assetType).catch(() => []);
+    if (!longDaily.length) {
+      await writeUsMonthlyHistory(ticker, merged);
+      return merged;
+    }
     const longMonthly = aggregateCandles(longDaily, "monthly").map((candle) => ({ localDate: candle.date.replaceAll("-", ""), openPrice: candle.open, highPrice: candle.high, lowPrice: candle.low, closePrice: candle.close, accumulatedTradingVolume: candle.volume }));
     const complete = [...new Map([...merged, ...longMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
     await writeUsMonthlyHistory(ticker, complete);
