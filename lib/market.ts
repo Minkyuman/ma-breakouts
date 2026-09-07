@@ -910,7 +910,7 @@ async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Pr
   }
 }
 
-async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[]) {
+async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[], source = "nasdaq") {
   if (!rows.length) return;
   try {
     await ensureUsMonthlyHistoryStorage();
@@ -920,7 +920,7 @@ async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, ro
       code: ticker.code.toUpperCase(),
       period: `${row.localDate.slice(0, 4)}-${row.localDate.slice(4, 6)}-${row.localDate.slice(6, 8)}`,
       open: Number(row.openPrice), high: Number(row.highPrice), low: Number(row.lowPrice), close: Number(row.closePrice), volume: Number(row.accumulatedTradingVolume ?? 0),
-      source: "nasdaq", fetchedAt: now, updatedAt: now,
+      source, fetchedAt: now, updatedAt: now,
     }))).onConflictDoUpdate({
       target: [usMonthlyHistory.market, usMonthlyHistory.code, usMonthlyHistory.period],
       set: { open: sql`excluded.open`, high: sql`excluded.high`, low: sql`excluded.low`, close: sql`excluded.close`, volume: sql`excluded.volume`, fetchedAt: now, updatedAt: now },
@@ -930,8 +930,79 @@ async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, ro
   }
 }
 
+async function fetchYahooUsMonthlyChart(code: string): Promise<DailyRow[]> {
+  const endSeconds = Math.floor(Date.now() / 1_000);
+  // 26 years gives enough buffer for MA240 and for a previous-period comparison.
+  const startSeconds = Math.floor(Date.UTC(new Date().getUTCFullYear() - 26, 0, 1) / 1_000);
+  const payload = await fetchUsJson<{
+    chart?: { result?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ open?: Array<number | null>; high?: Array<number | null>; low?: Array<number | null>; close?: Array<number | null>; volume?: Array<number | null> }> } }> };
+  }>(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?period1=${startSeconds}&period2=${endSeconds}&interval=1mo&events=history`);
+  const result = payload.chart?.result?.[0];
+  const quote = result?.indicators?.quote?.[0];
+  const timestamps = result?.timestamp ?? [];
+  if (!quote || !timestamps.length) return [];
+  return timestamps.flatMap((timestamp, index) => {
+    const open = quote.open?.[index];
+    const high = quote.high?.[index];
+    const low = quote.low?.[index];
+    const close = quote.close?.[index];
+    if (![open, high, low, close].every((value) => typeof value === "number" && Number.isFinite(value) && value > 0)) return [];
+    const date = new Date(timestamp * 1_000);
+    const localDate = `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}`;
+    return [{ localDate, openPrice: open!, highPrice: high!, lowPrice: low!, closePrice: close!, accumulatedTradingVolume: quote.volume?.[index] ?? 0 }];
+  });
+}
+
+async function fetchAlphaVantageUsMonthlyChart(code: string): Promise<DailyRow[]> {
+  const apiKey = process.env.ALPHA_VANTAGE_API_KEY?.trim();
+  if (!apiKey) return [];
+  const payload = await fetchUsJson<{
+    Note?: string;
+    Information?: string;
+    "Monthly Adjusted Time Series"?: Record<string, {
+      "1. open"?: string;
+      "2. high"?: string;
+      "3. low"?: string;
+      "4. close"?: string;
+      "6. volume"?: string;
+    }>;
+  }>(`https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol=${encodeURIComponent(code)}&apikey=${encodeURIComponent(apiKey)}`);
+  const series = payload["Monthly Adjusted Time Series"];
+  if (!series) return [];
+  return Object.entries(series).flatMap(([date, value]) => {
+    const open = numeric(value["1. open"]);
+    const high = numeric(value["2. high"]);
+    const low = numeric(value["3. low"]);
+    const close = numeric(value["4. close"]);
+    if (Math.min(open, high, low, close) <= 0) return [];
+    return [{
+      localDate: date.replaceAll("-", ""),
+      openPrice: open,
+      highPrice: high,
+      lowPrice: low,
+      closePrice: close,
+      accumulatedTradingVolume: numeric(value["6. volume"]),
+    }];
+  }).sort((left, right) => left.localDate.localeCompare(right.localDate));
+}
+
 export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market" | "assetType">): Promise<DailyRow[]> {
   const cached = await readUsMonthlyHistory(ticker);
+  // Alpha Vantage's free monthly endpoint has a tight daily quota. Once a
+  // security has enough persisted history for MA240, keep chart reads local.
+  if (cached.length >= 241) return cached;
+  const alphaVantageMonthly = await fetchAlphaVantageUsMonthlyChart(ticker.code).catch(() => []);
+  if (alphaVantageMonthly.length >= 241) {
+    const complete = [...new Map([...cached, ...alphaVantageMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
+    await writeUsMonthlyHistory(ticker, complete, "alpha-vantage");
+    return complete;
+  }
+  const yahooMonthly = await fetchYahooUsMonthlyChart(ticker.code).catch(() => []);
+  if (yahooMonthly.length >= 241) {
+    const complete = [...new Map([...cached, ...yahooMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
+    await writeUsMonthlyHistory(ticker, complete, "yahoo");
+    return complete;
+  }
   const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType).catch(() => []);
   const freshMonthly = aggregateCandles(current, "monthly").map((candle) => ({ localDate: candle.date.replaceAll("-", ""), openPrice: candle.open, highPrice: candle.high, lowPrice: candle.low, closePrice: candle.close, accumulatedTradingVolume: candle.volume }));
   const merged = [...new Map([...cached, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));

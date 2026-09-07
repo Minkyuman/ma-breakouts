@@ -13,6 +13,8 @@ test("US monthly 240 history is split and durably cached", async () => {
   assert.match(market, /windowStart\.setFullYear\(windowStart\.getFullYear\(\) - 8\)/);
   assert.match(market, /limit=5000/);
   assert.match(market, /export async function fetchUsMonthlyChart/);
+  assert.match(market, /query1\.finance\.yahoo\.com\/v8\/finance\/chart/);
+  assert.match(market, /TIME_SERIES_MONTHLY_ADJUSTED/);
   assert.match(market, /usMonthlyHistory/);
   assert.match(schema, /export const usMonthlyHistory = pgTable\(/);
   assert.match(schema, /us_monthly_history_market_code_period_unique/);
