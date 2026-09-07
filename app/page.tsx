@@ -2790,9 +2790,13 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
     ? "주요 시장 지수의 가격 흐름과 이동평균을 확인하는 화면입니다."
     : overviewDescription
       ? overviewDescription
-    : activeClassification?.industry || activeClassification?.sector
-      ? `${activeClassification.industry ?? activeClassification.sector} 관련 ${selected.assetType === "ETF" ? "상장지수펀드" : "상장 종목"}입니다.`
+      : activeClassification?.industry || activeClassification?.sector
+        ? `${activeClassification.industry ?? activeClassification.sector} 관련 ${selected.assetType === "ETF" ? "상장지수펀드" : "상장 종목"}입니다.`
       : selected.assetType === "ETF" ? "시장 또는 테마를 추종하는 상장지수펀드입니다." : "사업 분류 정보를 확인하는 중입니다.";
+  // Korean Naver business summaries are commonly 180~230 characters.  They
+  // already overflow the three-line presentation on the detail panel, even
+  // though they did not meet the old, US-description-oriented 240-char gate.
+  const hasExpandableOverviewDescription = (overviewDescription?.length ?? 0) > 140;
 
   return (
     <main className="app-shell">
@@ -3314,7 +3318,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
                 <div className="overview-summary">
                   <span>BUSINESS SNAPSHOT</span>
                   <strong className={overviewDescription ? `overview-description${overviewDescriptionExpanded ? " expanded" : ""}` : undefined}>{overviewSummary}</strong>
-                  {overviewDescription && overviewDescription.length > 240 && <button className="overview-description-toggle" type="button" onClick={() => setOverviewDescriptionExpanded((expanded) => !expanded)}>{overviewDescriptionExpanded ? "간략히 보기" : "전체 소개 보기"}</button>}
+                  {hasExpandableOverviewDescription && <button className="overview-description-toggle" type="button" onClick={() => setOverviewDescriptionExpanded((expanded) => !expanded)}>{overviewDescriptionExpanded ? "간략히 보기" : "전체 소개 보기"}</button>}
                   <small>{selected.name} · {selected.code} · {selected.market}</small>
                 </div>
                 <div className="overview-facts">
