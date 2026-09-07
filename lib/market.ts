@@ -145,11 +145,29 @@ async function fetchUsJson<T>(url: string): Promise<T> {
     : [url];
   let lastStatus = 0;
   for (const endpoint of urls) {
-    const response = await fetch(endpoint, { headers: US_HEADERS, cache: "no-store" });
-    if (response.ok) return (await response.json()) as T;
-    lastStatus = response.status;
+    try {
+      const response = await fetch(endpoint, { headers: US_HEADERS, cache: "no-store", signal: AbortSignal.timeout(12_000) });
+      if (response.ok) return (await response.json()) as T;
+      lastStatus = response.status;
+    } catch {
+      lastStatus = 599;
+    }
   }
   throw new Error(`US market data request failed (${lastStatus})`);
+}
+
+async function fallbackAfter<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeout = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 async function fetchMarket(slug: Market, assetFilter: AssetFilter): Promise<Ticker[]> {
@@ -1097,20 +1115,20 @@ async function fetchAlphaVantageUsMonthlyChart(code: string): Promise<DailyRow[]
 }
 
 export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market" | "assetType">): Promise<DailyRow[]> {
-  const cached = await readUsMonthlyHistory(ticker);
+  const cached = await fallbackAfter(readUsMonthlyHistory(ticker), [], 8_000);
   // Alpha Vantage's free monthly endpoint has a tight daily quota. Once a
   // security has enough persisted history for MA240, keep chart reads local.
   if (cached.length >= 241) return cached;
   const alphaVantageMonthly = await fetchAlphaVantageUsMonthlyChart(ticker.code).catch(() => []);
   if (alphaVantageMonthly.length >= 241) {
     const complete = [...new Map([...cached, ...alphaVantageMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
-    await writeUsMonthlyHistory(ticker, complete, "alpha-vantage");
+    void writeUsMonthlyHistory(ticker, complete, "alpha-vantage");
     return complete;
   }
   const yahooMonthly = await fetchYahooUsMonthlyChart(ticker.code).catch(() => []);
   if (yahooMonthly.length >= 241) {
     const complete = [...new Map([...cached, ...yahooMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
-    await writeUsMonthlyHistory(ticker, complete, "yahoo");
+    void writeUsMonthlyHistory(ticker, complete, "yahoo");
     return complete;
   }
   const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType).catch(() => []);
@@ -1119,15 +1137,15 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
   if (merged.length < 250) {
     const longDaily = await fetchUsDailyChartUncached(ticker.code, 24, ticker.assetType).catch(() => []);
     if (!longDaily.length) {
-      await writeUsMonthlyHistory(ticker, merged);
+      void writeUsMonthlyHistory(ticker, merged);
       return merged;
     }
     const longMonthly = aggregateCandles(longDaily, "monthly").map((candle) => ({ localDate: candle.date.replaceAll("-", ""), openPrice: candle.open, highPrice: candle.high, lowPrice: candle.low, closePrice: candle.close, accumulatedTradingVolume: candle.volume }));
     const complete = [...new Map([...merged, ...longMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
-    await writeUsMonthlyHistory(ticker, complete);
+    void writeUsMonthlyHistory(ticker, complete);
     return complete;
   }
-  await writeUsMonthlyHistory(ticker, freshMonthly);
+  void writeUsMonthlyHistory(ticker, freshMonthly);
   return merged;
 }
 
@@ -1135,7 +1153,7 @@ async function fetchUsMonthlyScreenChart(
   ticker: Pick<Ticker, "code" | "market" | "assetType">,
   maPeriod: MovingAveragePeriod,
 ): Promise<DailyRow[]> {
-  const cached = await readUsMonthlyHistorySnapshot(ticker);
+  const cached = await fallbackAfter(readUsMonthlyHistorySnapshot(ticker), { rows: [], fetchedAt: null }, 8_000);
   const hasEnoughHistory = cached.rows.length >= maPeriod + 1;
   const isFresh = cached.fetchedAt !== null && Date.now() - cached.fetchedAt.getTime() < US_SCREEN_LIVE_CANDLE_CACHE_MS;
   if (hasEnoughHistory && isFresh) return cached.rows;
@@ -1155,7 +1173,7 @@ async function fetchUsMonthlyScreenChart(
   }));
   const merged = [...new Map([...cached.rows, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()]
     .sort((left, right) => left.localDate.localeCompare(right.localDate));
-  if (freshMonthly.length) await writeUsMonthlyHistory(ticker, freshMonthly, "nasdaq");
+  if (freshMonthly.length) void writeUsMonthlyHistory(ticker, freshMonthly, "nasdaq");
   return merged;
 }
 
@@ -1163,7 +1181,7 @@ async function fetchUsWeeklyScreenChart(
   ticker: Pick<Ticker, "code" | "market" | "assetType">,
   maPeriod: MovingAveragePeriod,
 ): Promise<DailyRow[]> {
-  const cached = await readUsWeeklyHistorySnapshot(ticker);
+  const cached = await fallbackAfter(readUsWeeklyHistorySnapshot(ticker), { rows: [], fetchedAt: null }, 8_000);
   const hasEnoughHistory = cached.rows.length >= maPeriod + 1;
   const isFresh = cached.fetchedAt !== null && Date.now() - cached.fetchedAt.getTime() < US_SCREEN_LIVE_CANDLE_CACHE_MS;
   if (hasEnoughHistory && isFresh) return cached.rows;
@@ -1184,7 +1202,7 @@ async function fetchUsWeeklyScreenChart(
   }));
   const merged = [...new Map([...cached.rows, ...freshWeekly].map((row) => [row.localDate, row])).values()]
     .sort((left, right) => left.localDate.localeCompare(right.localDate));
-  if (freshWeekly.length) await writeUsWeeklyHistory(ticker, freshWeekly);
+  if (freshWeekly.length) void writeUsWeeklyHistory(ticker, freshWeekly);
   return merged;
 }
 

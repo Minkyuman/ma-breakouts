@@ -60,9 +60,13 @@ export async function GET(request: Request) {
     // at the same time, then join only after the chart series is ready.
     const usesCachedUsMonthly = !isKoreanMarket && timeframe === "monthly";
     const dailyPromise = fetchTickerDailyChart;
-    const chartPromise = usesCachedUsMonthly
-      ? fetchUsMonthlyChart(ticker)
-      : dailyPromise(ticker, timeframe === "daily" ? 3 : historyYears(timeframe, 240));
+    const chartPromise = fallbackAfter(
+      usesCachedUsMonthly
+        ? fetchUsMonthlyChart(ticker)
+        : dailyPromise(ticker, timeframe === "daily" ? 3 : historyYears(timeframe, 240)),
+      [],
+      25_000,
+    );
     // Monthly cache rows are sufficient for the long chart, but the compact
     // daily/weekly change badges still need a recent daily window.
     const changesPromise = usesCachedUsMonthly ? fallbackAfter(dailyPromise(ticker, 3), []) : chartPromise;
