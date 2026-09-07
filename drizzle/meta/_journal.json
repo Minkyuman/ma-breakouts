@@ -120,6 +120,13 @@
       "when": 1788670000000,
       "tag": "0016_add_service_announcements",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788795000000,
+      "tag": "0018_us_history_cache",
+      "breakpoints": true
     }
   ]
 }

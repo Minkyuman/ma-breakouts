@@ -972,7 +972,6 @@ type UsMonthlyHistorySnapshot = { rows: DailyRow[]; fetchedAt: Date | null };
 
 async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
   try {
-    await ensureUsMonthlyHistoryStorage();
     const rows = await getDb().select().from(usMonthlyHistory)
       .where(and(eq(usMonthlyHistory.market, ticker.market), eq(usMonthlyHistory.code, ticker.code.toUpperCase())))
       .orderBy(sql`${usMonthlyHistory.period} asc`);
@@ -999,7 +998,6 @@ async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Pr
 async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[], source = "nasdaq") {
   if (!rows.length) return;
   try {
-    await ensureUsMonthlyHistoryStorage();
     const now = new Date();
     await getDb().insert(usMonthlyHistory).values(rows.map((row) => ({
       market: ticker.market,
@@ -1018,7 +1016,6 @@ async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, ro
 
 async function readUsWeeklyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
   try {
-    await ensureUsWeeklyHistoryStorage();
     const rows = await getDb().select().from(usWeeklyHistory)
       .where(and(eq(usWeeklyHistory.market, ticker.market), eq(usWeeklyHistory.code, ticker.code.toUpperCase())))
       .orderBy(sql`${usWeeklyHistory.period} asc`);
@@ -1041,7 +1038,6 @@ async function readUsWeeklyHistorySnapshot(ticker: Pick<Ticker, "code" | "market
 async function writeUsWeeklyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[], source = "nasdaq") {
   if (!rows.length) return;
   try {
-    await ensureUsWeeklyHistoryStorage();
     const now = new Date();
     await getDb().insert(usWeeklyHistory).values(rows.map((row) => ({
       market: ticker.market,
@@ -1160,9 +1156,12 @@ async function fetchUsMonthlyScreenChart(
 
   // Bootstrap only once. Subsequent refreshes retrieve just enough daily bars
   // to rebuild the in-progress month and preserve all older cached months.
-  const daily = hasEnoughHistory
-    ? await fetchUsRecentDailyChart(ticker.code, 62, ticker.assetType)
-    : await fetchUsDailyChart(ticker.code, historyYears("monthly", maPeriod), ticker.assetType);
+  const daily = await (hasEnoughHistory
+    ? fetchUsRecentDailyChart(ticker.code, 62, ticker.assetType)
+    : fetchUsDailyChart(ticker.code, historyYears("monthly", maPeriod), ticker.assetType)).catch(() => []);
+  // A provider hiccup should not turn a previously cached security into a
+  // screening failure. Its last complete monthly candle is still usable.
+  if (!daily.length && hasEnoughHistory) return cached.rows;
   const freshMonthly = aggregateCandles(daily, "monthly").map((candle) => ({
     localDate: candle.date.replaceAll("-", ""),
     openPrice: candle.open,
@@ -1189,9 +1188,10 @@ async function fetchUsWeeklyScreenChart(
   // Persist weekly candles rather than raw daily rows. After bootstrap, only
   // the current and previous week are re-fetched; the seven-year MA240 record
   // remains untouched in PostgreSQL.
-  const daily = hasEnoughHistory
-    ? await fetchUsRecentDailyChart(ticker.code, 21, ticker.assetType)
-    : await fetchUsDailyChart(ticker.code, historyYears("weekly", maPeriod), ticker.assetType);
+  const daily = await (hasEnoughHistory
+    ? fetchUsRecentDailyChart(ticker.code, 21, ticker.assetType)
+    : fetchUsDailyChart(ticker.code, historyYears("weekly", maPeriod), ticker.assetType)).catch(() => []);
+  if (!daily.length && hasEnoughHistory) return cached.rows;
   const freshWeekly = aggregateCandles(daily, "weekly").map((candle) => ({
     localDate: candle.date.replaceAll("-", ""),
     openPrice: candle.open,
