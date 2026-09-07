@@ -22,6 +22,22 @@ function summarizeChange(candles: Array<{ close: number }>) {
   return { current, previous, change, changePct: (change / previous) * 100 };
 }
 
+async function fallbackAfter<T>(promise: Promise<T>, fallback: T, timeoutMs = 3_500): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeout = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } catch {
+    return fallback;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export async function GET(request: Request) {
   if (!(await getSession(request))) return unauthorized();
   try {
@@ -49,13 +65,16 @@ export async function GET(request: Request) {
       : dailyPromise(ticker, timeframe === "daily" ? 3 : historyYears(timeframe, 240));
     // Monthly cache rows are sufficient for the long chart, but the compact
     // daily/weekly change badges still need a recent daily window.
-    const changesPromise = usesCachedUsMonthly ? dailyPromise(ticker, 3).catch(() => []) : chartPromise;
-    const classificationPromise = fetchSecurityClassification(ticker);
+    const changesPromise = usesCachedUsMonthly ? fallbackAfter(dailyPromise(ticker, 3), []) : chartPromise;
+    // These enrich the header only. During a large US scan Nasdaq can throttle
+    // profile/constituent lookups; never let those optional calls hold back a
+    // chart whose candle series is already available.
+    const classificationPromise = fallbackAfter(fetchSecurityClassification(ticker), {});
     const metadataPromise = isKoreanMarket
       ? Promise.all([classificationPromise, Promise.resolve(undefined), Promise.resolve(undefined)])
       : assetType === "ETF"
-        ? Promise.all([classificationPromise, fetchUsdKrwRate(), Promise.resolve(false)])
-        : Promise.all([classificationPromise, fetchUsdKrwRate(), fetchNasdaq100Membership(code)]);
+        ? Promise.all([classificationPromise, fallbackAfter(fetchUsdKrwRate(), undefined), Promise.resolve(false)])
+        : Promise.all([classificationPromise, fallbackAfter(fetchUsdKrwRate(), undefined), fallbackAfter(fetchNasdaq100Membership(code), false)]);
     const [daily, changesDaily, [classification, exchangeRate, isNasdaq100]] = await Promise.all([chartPromise, changesPromise, metadataPromise]);
     const points = withMovingAverages(aggregateCandles(daily, timeframe));
     const changes = {
