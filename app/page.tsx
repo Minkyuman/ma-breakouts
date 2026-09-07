@@ -2192,6 +2192,7 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
   const [message, setMessage] = useState("스캔 전 · 주요 시장 흐름을 확인하세요");
   const [overviewNews, setOverviewNews] = useState<SecurityOverviewNews[]>([]);
   const [overviewDescription, setOverviewDescription] = useState<string | null>(null);
+  const [overviewDescriptionExpanded, setOverviewDescriptionExpanded] = useState(false);
 
   const resizeWorkspace = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     if (window.innerWidth <= 820) return;
@@ -2540,10 +2541,11 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!selected || isMarketOverview) { setOverviewNews([]); setOverviewDescription(null); return; }
+    if (!selected || isMarketOverview) { setOverviewNews([]); setOverviewDescription(null); setOverviewDescriptionExpanded(false); return; }
     const controller = new AbortController();
     setOverviewNews([]);
     setOverviewDescription(null);
+    setOverviewDescriptionExpanded(false);
     fetch(`/api/security-overview?code=${encodeURIComponent(selected.code)}&market=${selected.market}`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => response.ok ? response.json() as Promise<{ news?: SecurityOverviewNews[]; description?: string | null }> : { news: [], description: null })
       .then((payload) => { if (!controller.signal.aborted) { setOverviewNews(payload.news ?? []); setOverviewDescription(payload.description ?? null); } })
@@ -3309,7 +3311,12 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
               </div>
 
               {!isMarketOverview && <section className="security-overview" aria-label="종목 개요">
-                <div className="overview-summary"><span>BUSINESS SNAPSHOT</span><strong>{overviewSummary}</strong><small>{selected.name} · {selected.code} · {selected.market}</small></div>
+                <div className="overview-summary">
+                  <span>BUSINESS SNAPSHOT</span>
+                  <strong className={overviewDescription ? `overview-description${overviewDescriptionExpanded ? " expanded" : ""}` : undefined}>{overviewSummary}</strong>
+                  {overviewDescription && overviewDescription.length > 240 && <button className="overview-description-toggle" type="button" onClick={() => setOverviewDescriptionExpanded((expanded) => !expanded)}>{overviewDescriptionExpanded ? "간략히 보기" : "전체 소개 보기"}</button>}
+                  <small>{selected.name} · {selected.code} · {selected.market}</small>
+                </div>
                 <div className="overview-facts">
                   <article className="overview-news"><span>최근 이벤트</span>{overviewNews.length ? <ul>{overviewNews.slice(0, 4).map((news) => <li key={news.id}><a href={news.url} target="_blank" rel="noreferrer">{news.title}</a><small>{news.office}{news.publishedAt ? ` · ${new Date(news.publishedAt).toLocaleDateString("ko-KR")}` : " · 날짜 미확인"}</small></li>)}</ul> : <small>최근 뉴스 확인 중…</small>}</article>
                 </div>

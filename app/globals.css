@@ -2708,7 +2708,10 @@ select:focus-visible {
 }
 .overview-summary { display: grid; gap: 5px; }
 .overview-summary > span, .overview-facts article > span { color: var(--gold); font: 700 10px/1.2 var(--font-geist-mono); letter-spacing: .12em; }
-.overview-summary strong { color: var(--ink); font-size: 17px; }
+.overview-summary strong { color: var(--ink); font-size: 17px; line-height: 1.5; }
+.overview-summary strong.overview-description { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.overview-summary strong.overview-description.expanded { display: block; overflow: visible; }
+.overview-description-toggle { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--green); font-size: 12px; font-weight: 750; cursor: pointer; }
 .overview-summary small, .overview-facts small { color: var(--muted); }
 .overview-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .overview-facts:has(.overview-news:only-child) { grid-template-columns: minmax(0, 1fr); }

@@ -9,6 +9,14 @@ function clean(value: unknown) {
   return String(value ?? "").replace(/<[^>]*>/gu, "").replace(/\s+/gu, " ").trim();
 }
 
+function compactDescription(value: string) {
+  const text = clean(value);
+  if (text.length <= 720) return text;
+  const boundary = text.slice(0, 720).search(/[.!?。！？](?!.*[.!?。！？])/u);
+  const cut = boundary >= 360 ? boundary + 1 : 720;
+  return `${text.slice(0, cut).trim()}…`;
+}
+
 function dateFromNaver(value: unknown) {
   const compact = String(value ?? "");
   return /^\d{12}$/u.test(compact) ? `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)} ${compact.slice(8, 10)}:${compact.slice(10, 12)}` : null;
@@ -72,14 +80,14 @@ async function loadDescription(code: string, market: string): Promise<string | n
     const text = clean(summary)
       .replace(/^기업개요\s*/u, "")
       .replace(/^동사는\s*/u, "");
-    return text ? text.slice(0, 260) : loadDartDescription(code);
+    return text ? compactDescription(text) : loadDartDescription(code);
   }
   if (market === "NASDAQ" || market === "NYSE" || market === "AMEX" || market === "US_ETF") {
     const response = await fetch(`https://api.nasdaq.com/api/company/${encodeURIComponent(code.toLowerCase())}/company-profile`, { headers: { accept: "application/json", "user-agent": "Mozilla/5.0" }, cache: "no-store" });
     if (!response.ok) return null;
     const payload = await response.json() as { data?: { CompanyDescription?: { value?: string } } };
     const text = clean(payload.data?.CompanyDescription?.value);
-    return text ? text.slice(0, 260) : null;
+    return text ? compactDescription(text) : null;
   }
   return null;
 }
