@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       : dailyPromise(ticker, timeframe === "daily" ? 3 : historyYears(timeframe, 240));
     // Monthly cache rows are sufficient for the long chart, but the compact
     // daily/weekly change badges still need a recent daily window.
-    const changesPromise = usesCachedUsMonthly ? dailyPromise(ticker, 3) : chartPromise;
+    const changesPromise = usesCachedUsMonthly ? dailyPromise(ticker, 3).catch(() => []) : chartPromise;
     const classificationPromise = fetchSecurityClassification(ticker);
     const metadataPromise = isKoreanMarket
       ? Promise.all([classificationPromise, Promise.resolve(undefined), Promise.resolve(undefined)])
