@@ -66,7 +66,9 @@ export async function POST(request: Request) {
     matches = groups.flatMap((group) => (group.match ? [group.match] : []));
     failures = groups.reduce((sum, group) => sum + group.groupFailures, 0);
     const hasUsdMatches = matches.some((item) => item.currency === "USD");
-    const exchangeRate = hasUsdMatches ? await fetchUsdKrwRate() : undefined;
+    // FX is only a display conversion. A temporary rate-provider failure must
+    // never turn an otherwise completed screening batch into a 502.
+    const exchangeRate = hasUsdMatches ? await fetchUsdKrwRate().catch(() => undefined) : undefined;
     if (exchangeRate) {
       matches = matches.map((item) => item.currency === "USD"
         ? { ...item, exchangeRate, krwPrice: item.price * exchangeRate }
