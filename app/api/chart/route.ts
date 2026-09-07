@@ -3,6 +3,7 @@ import { getSession, unauthorized } from "@/lib/auth";
 import {
   aggregateCandles,
   fetchTickerDailyChart,
+  fetchUsMonthlyChart,
   fetchUsdKrwRate,
   fetchNasdaq100Membership,
   fetchSecurityClassification,
@@ -41,19 +42,26 @@ export async function GET(request: Request) {
     const ticker = { code, name, market, assetType };
     // US historical candles are the heaviest request. Start supplemental metadata
     // at the same time, then join only after the chart series is ready.
-    const dailyPromise = fetchTickerDailyChart(ticker, timeframe === "daily" ? 3 : historyYears(timeframe, 240));
+    const usesCachedUsMonthly = !isKoreanMarket && timeframe === "monthly";
+    const dailyPromise = fetchTickerDailyChart;
+    const chartPromise = usesCachedUsMonthly
+      ? fetchUsMonthlyChart(ticker)
+      : dailyPromise(ticker, timeframe === "daily" ? 3 : historyYears(timeframe, 240));
+    // Monthly cache rows are sufficient for the long chart, but the compact
+    // daily/weekly change badges still need a recent daily window.
+    const changesPromise = usesCachedUsMonthly ? dailyPromise(ticker, 3) : chartPromise;
     const classificationPromise = fetchSecurityClassification(ticker);
     const metadataPromise = isKoreanMarket
       ? Promise.all([classificationPromise, Promise.resolve(undefined), Promise.resolve(undefined)])
       : assetType === "ETF"
         ? Promise.all([classificationPromise, fetchUsdKrwRate(), Promise.resolve(false)])
         : Promise.all([classificationPromise, fetchUsdKrwRate(), fetchNasdaq100Membership(code)]);
-    const [daily, [classification, exchangeRate, isNasdaq100]] = await Promise.all([dailyPromise, metadataPromise]);
+    const [daily, changesDaily, [classification, exchangeRate, isNasdaq100]] = await Promise.all([chartPromise, changesPromise, metadataPromise]);
     const points = withMovingAverages(aggregateCandles(daily, timeframe));
     const changes = {
-      daily: summarizeChange(aggregateCandles(daily, "daily")),
-      weekly: summarizeChange(aggregateCandles(daily, "weekly")),
-      monthly: summarizeChange(aggregateCandles(daily, "monthly")),
+      daily: summarizeChange(aggregateCandles(changesDaily, "daily")),
+      weekly: summarizeChange(aggregateCandles(changesDaily, "weekly")),
+      monthly: summarizeChange(aggregateCandles(changesDaily, "monthly")),
     };
     return NextResponse.json({ points: points.slice(-360), timeframe, movingAverages: [5, 10, 240], changes, currency: isKoreanMarket ? "KRW" : "USD", exchangeRate, isNasdaq100, classification });
   } catch (error) {

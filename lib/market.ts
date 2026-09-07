@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { marketSearchIndex, securityClassificationCache } from "@/db/schema";
+import { marketSearchIndex, securityClassificationCache, usMonthlyHistory } from "@/db/schema";
 
 export type Region = "kr" | "us";
 export type Market = "KOSPI" | "KOSDAQ" | "NASDAQ" | "NYSE" | "AMEX" | "US_ETF" | "GLOBAL";
@@ -794,11 +794,39 @@ export async function fetchDailyChart(code: string, years: number, useCache = tr
 const US_CHART_CACHE_MS = 5 * 60_000;
 const usChartCache = new Map<string, { expiresAt: number; rows: DailyRow[] }>();
 const usChartRequests = new Map<string, Promise<DailyRow[]>>();
+let usMonthlyHistoryStorageRequest: Promise<void> | null = null;
 
-async function fetchUsDailyChartUncached(code: string, years: number, assetType: AssetType): Promise<DailyRow[]> {
-  const endDate = new Date();
-  const startDate = new Date(endDate);
-  startDate.setFullYear(startDate.getFullYear() - years);
+async function ensureUsMonthlyHistoryStorage() {
+  if (usMonthlyHistoryStorageRequest) return usMonthlyHistoryStorageRequest;
+  usMonthlyHistoryStorageRequest = (async () => {
+    const database = getDb();
+    await database.execute(sql.raw(`
+      CREATE TABLE IF NOT EXISTS "us_monthly_history" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "market" varchar(16) NOT NULL,
+        "code" varchar(16) NOT NULL,
+        "period" date NOT NULL,
+        "open" double precision NOT NULL,
+        "high" double precision NOT NULL,
+        "low" double precision NOT NULL,
+        "close" double precision NOT NULL,
+        "volume" double precision DEFAULT 0 NOT NULL,
+        "source" varchar(32) DEFAULT 'nasdaq' NOT NULL,
+        "fetched_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+      )
+    `));
+    await database.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS "us_monthly_history_market_code_period_unique" ON "us_monthly_history" ("market", "code", "period")`));
+    await database.execute(sql.raw(`CREATE INDEX IF NOT EXISTS "us_monthly_history_code_period_idx" ON "us_monthly_history" ("market", "code", "period")`));
+    await database.execute(sql.raw(`ALTER TABLE "us_monthly_history" ENABLE ROW LEVEL SECURITY`));
+  })().catch((error) => {
+    usMonthlyHistoryStorageRequest = null;
+    throw error;
+  });
+  return usMonthlyHistoryStorageRequest;
+}
+
+async function fetchUsDailyChartWindowUncached(code: string, startDate: Date, endDate: Date, assetType: AssetType): Promise<DailyRow[]> {
   const toDate = (date: Date) => date.toISOString().slice(0, 10);
   type HistoricalRow = { date?: string; open?: string; high?: string; low?: string; close?: string; volume?: string };
   const payload = await fetchUsJson<{ data?: { tradesTable?: { rows?: HistoricalRow[] } } }>(
@@ -817,6 +845,27 @@ async function fetchUsDailyChartUncached(code: string, years: number, assetType:
       accumulatedTradingVolume: numeric(row.volume),
     };
   });
+}
+
+async function fetchUsDailyChartUncached(code: string, years: number, assetType: AssetType): Promise<DailyRow[]> {
+  const endDate = new Date();
+  const startDate = new Date(endDate);
+  startDate.setFullYear(startDate.getFullYear() - years);
+  // Nasdaq's public historical response is capped at 5,000 rows. Split long
+  // windows so a 240-month calculation does not silently receive only ~19 years.
+  if (years <= 15) return fetchUsDailyChartWindowUncached(code, startDate, endDate, assetType);
+  const windows: Array<[Date, Date]> = [];
+  let windowEnd = endDate;
+  while (windowEnd > startDate) {
+    const windowStart = new Date(windowEnd);
+    windowStart.setFullYear(windowStart.getFullYear() - 8);
+    const boundedStart = windowStart < startDate ? startDate : windowStart;
+    windows.push([boundedStart, windowEnd]);
+    windowEnd = new Date(boundedStart);
+    windowEnd.setDate(windowEnd.getDate() - 1);
+  }
+  const chunks = await Promise.all(windows.map(([from, to]) => fetchUsDailyChartWindowUncached(code, from, to, assetType)));
+  return [...new Map(chunks.flat().map((row) => [row.localDate, row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
 }
 
 export async function fetchUsDailyChart(code: string, years: number, assetType: AssetType = "STOCK", useCache = true): Promise<DailyRow[]> {
@@ -842,6 +891,54 @@ export async function fetchTickerDailyChart(ticker: Pick<Ticker, "code" | "marke
   return ticker.market === "KOSPI" || ticker.market === "KOSDAQ"
     ? fetchDailyChart(ticker.code, years, useCache)
     : fetchUsDailyChart(ticker.code, years, ticker.assetType, useCache);
+}
+
+async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Promise<DailyRow[]> {
+  try {
+    await ensureUsMonthlyHistoryStorage();
+    const rows = await getDb().select().from(usMonthlyHistory)
+      .where(and(eq(usMonthlyHistory.market, ticker.market), eq(usMonthlyHistory.code, ticker.code.toUpperCase())))
+      .orderBy(sql`${usMonthlyHistory.period} asc`);
+    return rows.map((row) => ({ localDate: row.period.replaceAll("-", ""), openPrice: row.open, highPrice: row.high, lowPrice: row.low, closePrice: row.close, accumulatedTradingVolume: row.volume }));
+  } catch {
+    return [];
+  }
+}
+
+async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[]) {
+  if (!rows.length) return;
+  try {
+    await ensureUsMonthlyHistoryStorage();
+    const now = new Date();
+    await getDb().insert(usMonthlyHistory).values(rows.map((row) => ({
+      market: ticker.market,
+      code: ticker.code.toUpperCase(),
+      period: `${row.localDate.slice(0, 4)}-${row.localDate.slice(4, 6)}-${row.localDate.slice(6, 8)}`,
+      open: Number(row.openPrice), high: Number(row.highPrice), low: Number(row.lowPrice), close: Number(row.closePrice), volume: Number(row.accumulatedTradingVolume ?? 0),
+      source: "nasdaq", fetchedAt: now, updatedAt: now,
+    }))).onConflictDoUpdate({
+      target: [usMonthlyHistory.market, usMonthlyHistory.code, usMonthlyHistory.period],
+      set: { open: sql`excluded.open`, high: sql`excluded.high`, low: sql`excluded.low`, close: sql`excluded.close`, volume: sql`excluded.volume`, fetchedAt: now, updatedAt: now },
+    });
+  } catch {
+    // Historical caching is an optimization; provider data remains usable if DB is unavailable.
+  }
+}
+
+export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market" | "assetType">): Promise<DailyRow[]> {
+  const cached = await readUsMonthlyHistory(ticker);
+  const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType);
+  const freshMonthly = aggregateCandles(current, "monthly").map((candle) => ({ localDate: candle.date.replaceAll("-", ""), openPrice: candle.open, highPrice: candle.high, lowPrice: candle.low, closePrice: candle.close, accumulatedTradingVolume: candle.volume }));
+  const merged = [...new Map([...cached, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
+  if (merged.length < 250) {
+    const longDaily = await fetchUsDailyChartUncached(ticker.code, 24, ticker.assetType);
+    const longMonthly = aggregateCandles(longDaily, "monthly").map((candle) => ({ localDate: candle.date.replaceAll("-", ""), openPrice: candle.open, highPrice: candle.high, lowPrice: candle.low, closePrice: candle.close, accumulatedTradingVolume: candle.volume }));
+    const complete = [...new Map([...merged, ...longMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
+    await writeUsMonthlyHistory(ticker, complete);
+    return complete;
+  }
+  await writeUsMonthlyHistory(ticker, freshMonthly);
+  return merged;
 }
 
 function quoteDate(date: string) {
@@ -1055,6 +1152,9 @@ export async function screenTicker(
   timeframe: Timeframe,
   maPeriod: MovingAveragePeriod,
 ): Promise<Candidate | null> {
-  const daily = await fetchTickerDailyChart(ticker, historyYears(timeframe, maPeriod));
+  const isUsTicker = ticker.market !== "KOSPI" && ticker.market !== "KOSDAQ";
+  const daily = isUsTicker && timeframe === "monthly" && maPeriod === 240
+    ? await fetchUsMonthlyChart(ticker)
+    : await fetchTickerDailyChart(ticker, historyYears(timeframe, maPeriod));
   return screenCandles(ticker, aggregateCandles(daily, timeframe), maPeriod, timeframe);
 }

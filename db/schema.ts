@@ -254,6 +254,29 @@ export const securityClassificationCache = pgTable(
   ],
 ).enableRLS();
 
+/** Durable monthly history used by long-window US moving-average calculations. */
+export const usMonthlyHistory = pgTable(
+  "us_monthly_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    market: varchar("market", { length: 16 }).notNull(),
+    code: varchar("code", { length: 16 }).notNull(),
+    period: date("period").notNull(),
+    open: doublePrecision("open").notNull(),
+    high: doublePrecision("high").notNull(),
+    low: doublePrecision("low").notNull(),
+    close: doublePrecision("close").notNull(),
+    volume: doublePrecision("volume").notNull().default(0),
+    source: varchar("source", { length: 32 }).notNull().default("nasdaq"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("us_monthly_history_market_code_period_unique").on(table.market, table.code, table.period),
+    index("us_monthly_history_code_period_idx").on(table.market, table.code, table.period),
+  ],
+).enableRLS();
+
 export const seasons = pgTable(
   "seasons",
   {
