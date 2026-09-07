@@ -792,10 +792,9 @@ export async function fetchDailyChart(code: string, years: number, useCache = tr
 }
 
 const US_CHART_CACHE_MS = 5 * 60_000;
-// A monthly MA10 signal changes only with the in-progress monthly candle. Keep
-// the persisted candle fresh during a session, without re-downloading every
-// US ticker every time a user re-runs the same market scan.
-const US_MONTHLY_SCREEN_CACHE_MS = 30 * 60_000;
+// This is a live-candle revalidation interval, not an expiry for historical
+// data. Older persisted weekly/monthly candles remain available indefinitely.
+const US_SCREEN_LIVE_CANDLE_CACHE_MS = 30 * 60_000;
 const usChartCache = new Map<string, { expiresAt: number; rows: DailyRow[] }>();
 const usChartRequests = new Map<string, Promise<DailyRow[]>>();
 let usMonthlyHistoryStorageRequest: Promise<void> | null = null;
@@ -912,6 +911,29 @@ export async function fetchUsDailyChart(code: string, years: number, assetType: 
   const pending = usChartRequests.get(key);
   if (pending) return pending;
   const request = fetchUsDailyChartUncached(normalizedCode, years, assetType)
+    .then((rows) => {
+      if (usChartCache.size >= 60) usChartCache.delete(usChartCache.keys().next().value!);
+      usChartCache.set(key, { rows, expiresAt: Date.now() + US_CHART_CACHE_MS });
+      return rows;
+    })
+    .finally(() => { usChartRequests.delete(key); });
+  usChartRequests.set(key, request);
+  return request;
+}
+
+async function fetchUsRecentDailyChart(code: string, days: number, assetType: AssetType): Promise<DailyRow[]> {
+  const normalizedCode = code.trim().toUpperCase();
+  const key = `${assetType}:${normalizedCode}:recent:${days}`;
+  const cached = usChartCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.rows;
+  const pending = usChartRequests.get(key);
+  if (pending) return pending;
+  const request = (() => {
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - days);
+    return fetchUsDailyChartWindowUncached(normalizedCode, start, end, assetType);
+  })()
     .then((rows) => {
       if (usChartCache.size >= 60) usChartCache.delete(usChartCache.keys().next().value!);
       usChartCache.set(key, { rows, expiresAt: Date.now() + US_CHART_CACHE_MS });
@@ -1115,13 +1137,14 @@ async function fetchUsMonthlyScreenChart(
 ): Promise<DailyRow[]> {
   const cached = await readUsMonthlyHistorySnapshot(ticker);
   const hasEnoughHistory = cached.rows.length >= maPeriod + 1;
-  const isFresh = cached.fetchedAt !== null && Date.now() - cached.fetchedAt.getTime() < US_MONTHLY_SCREEN_CACHE_MS;
+  const isFresh = cached.fetchedAt !== null && Date.now() - cached.fetchedAt.getTime() < US_SCREEN_LIVE_CANDLE_CACHE_MS;
   if (hasEnoughHistory && isFresh) return cached.rows;
 
-  // MA10 needs only three years of daily bars to create a reliable rolling
-  // monthly candle. Persist the resulting months, so the next full scan reads
-  // PostgreSQL instead of issuing one Nasdaq request per security again.
-  const daily = await fetchUsDailyChart(ticker.code, historyYears("monthly", maPeriod), ticker.assetType);
+  // Bootstrap only once. Subsequent refreshes retrieve just enough daily bars
+  // to rebuild the in-progress month and preserve all older cached months.
+  const daily = hasEnoughHistory
+    ? await fetchUsRecentDailyChart(ticker.code, 62, ticker.assetType)
+    : await fetchUsDailyChart(ticker.code, historyYears("monthly", maPeriod), ticker.assetType);
   const freshMonthly = aggregateCandles(daily, "monthly").map((candle) => ({
     localDate: candle.date.replaceAll("-", ""),
     openPrice: candle.open,
@@ -1132,7 +1155,7 @@ async function fetchUsMonthlyScreenChart(
   }));
   const merged = [...new Map([...cached.rows, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()]
     .sort((left, right) => left.localDate.localeCompare(right.localDate));
-  if (freshMonthly.length) await writeUsMonthlyHistory(ticker, merged, "nasdaq");
+  if (freshMonthly.length) await writeUsMonthlyHistory(ticker, freshMonthly, "nasdaq");
   return merged;
 }
 
@@ -1142,13 +1165,15 @@ async function fetchUsWeeklyScreenChart(
 ): Promise<DailyRow[]> {
   const cached = await readUsWeeklyHistorySnapshot(ticker);
   const hasEnoughHistory = cached.rows.length >= maPeriod + 1;
-  const isFresh = cached.fetchedAt !== null && Date.now() - cached.fetchedAt.getTime() < US_MONTHLY_SCREEN_CACHE_MS;
+  const isFresh = cached.fetchedAt !== null && Date.now() - cached.fetchedAt.getTime() < US_SCREEN_LIVE_CANDLE_CACHE_MS;
   if (hasEnoughHistory && isFresh) return cached.rows;
 
-  // Persist the weekly candles rather than raw daily rows. This keeps a
-  // seven-year MA240 cache compact while allowing weekly scans to avoid the
-  // per-ticker Nasdaq historical download on repeated runs.
-  const daily = await fetchUsDailyChart(ticker.code, historyYears("weekly", maPeriod), ticker.assetType);
+  // Persist weekly candles rather than raw daily rows. After bootstrap, only
+  // the current and previous week are re-fetched; the seven-year MA240 record
+  // remains untouched in PostgreSQL.
+  const daily = hasEnoughHistory
+    ? await fetchUsRecentDailyChart(ticker.code, 21, ticker.assetType)
+    : await fetchUsDailyChart(ticker.code, historyYears("weekly", maPeriod), ticker.assetType);
   const freshWeekly = aggregateCandles(daily, "weekly").map((candle) => ({
     localDate: candle.date.replaceAll("-", ""),
     openPrice: candle.open,
@@ -1159,7 +1184,7 @@ async function fetchUsWeeklyScreenChart(
   }));
   const merged = [...new Map([...cached.rows, ...freshWeekly].map((row) => [row.localDate, row])).values()]
     .sort((left, right) => left.localDate.localeCompare(right.localDate));
-  if (freshWeekly.length) await writeUsWeeklyHistory(ticker, merged);
+  if (freshWeekly.length) await writeUsWeeklyHistory(ticker, freshWeekly);
   return merged;
 }
 
