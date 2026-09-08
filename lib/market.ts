@@ -993,7 +993,9 @@ export function getUsMonthlySource(code: string): string | null {
 
 async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
   try {
-    await ensureUsMonthlyHistoryStorage();
+    // The durable cache is provisioned by the migration. Running CREATE TABLE
+    // checks in every chart request can consume several seconds on Supabase
+    // and leave too little time for the external monthly-history request.
     const rows = await getDb().select().from(usMonthlyHistory)
       .where(and(eq(usMonthlyHistory.market, ticker.market), eq(usMonthlyHistory.code, ticker.code.toUpperCase())))
       .orderBy(sql`${usMonthlyHistory.period} asc`);
@@ -1024,7 +1026,6 @@ async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Pr
 async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[], source = "nasdaq") {
   if (!rows.length) return;
   try {
-    await ensureUsMonthlyHistoryStorage();
     const now = new Date();
     await getDb().insert(usMonthlyHistory).values(rows.map((row) => ({
       market: ticker.market,
