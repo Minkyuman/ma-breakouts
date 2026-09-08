@@ -969,6 +969,10 @@ export async function fetchTickerDailyChart(ticker: Pick<Ticker, "code" | "marke
 }
 
 type UsMonthlyHistorySnapshot = { rows: DailyRow[]; fetchedAt: Date | null; source?: string | null };
+// Yahoo's monthly `close` is split-adjusted but, unlike Alpha Vantage's
+// `adjusted close`, does not reinvest dividends. This is the conventional
+// price series used by charting apps for moving-average calculations.
+const US_MONTHLY_SPLIT_ADJUSTED_SOURCE = "yahoo-split-adjusted";
 
 async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
   try {
@@ -1011,7 +1015,7 @@ async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, ro
       source, fetchedAt: now, updatedAt: now,
     }))).onConflictDoUpdate({
       target: [usMonthlyHistory.market, usMonthlyHistory.code, usMonthlyHistory.period],
-      set: { open: sql`excluded.open`, high: sql`excluded.high`, low: sql`excluded.low`, close: sql`excluded.close`, volume: sql`excluded.volume`, fetchedAt: now, updatedAt: now },
+      set: { open: sql`excluded.open`, high: sql`excluded.high`, low: sql`excluded.low`, close: sql`excluded.close`, volume: sql`excluded.volume`, source: sql`excluded.source`, fetchedAt: now, updatedAt: now },
     });
   } catch {
     // Historical caching is an optimization; provider data remains usable if DB is unavailable.
@@ -1122,21 +1126,25 @@ async function fetchAlphaVantageUsMonthlyChart(code: string): Promise<DailyRow[]
 export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market" | "assetType">): Promise<DailyRow[]> {
   const cachedSnapshot = await fallbackAfter(readUsMonthlyHistorySnapshot(ticker), { rows: [], fetchedAt: null }, 8_000);
   const cached = cachedSnapshot.rows;
-  // Alpha Vantage's free monthly endpoint has a tight daily quota. Once a
-  // security has enough persisted history for MA240, keep chart reads local.
-  // The adjusted source marker also invalidates the pre-existing raw-close
-  // cache, which would otherwise produce incorrect values after stock splits.
-  if (cached.length >= 241 && cachedSnapshot.source === "alpha-vantage-adjusted") return cached;
-  const alphaVantageMonthly = await fetchAlphaVantageUsMonthlyChart(ticker.code).catch(() => []);
-  if (alphaVantageMonthly.length >= 241) {
-    const complete = [...new Map([...cached, ...alphaVantageMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
-    void writeUsMonthlyHistory(ticker, complete, "alpha-vantage-adjusted");
-    return complete;
-  }
+  // Use a split-adjusted, non-dividend-adjusted close for technical analysis.
+  // Alpha Vantage's adjusted close also removes dividends, which can move a
+  // dividend-heavy stock's MA240 far below the price shown on normal charts.
+  // The source marker invalidates the earlier Alpha/raw cache exactly once.
+  if (cached.length >= 241 && cachedSnapshot.source === US_MONTHLY_SPLIT_ADJUSTED_SOURCE) return cached;
   const yahooMonthly = await fetchYahooUsMonthlyChart(ticker.code).catch(() => []);
   if (yahooMonthly.length >= 241) {
-    const complete = [...new Map([...cached, ...yahooMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
-    void writeUsMonthlyHistory(ticker, complete, "yahoo");
+    const complete = [...new Map(yahooMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
+      .sort((left, right) => left.localDate.localeCompare(right.localDate));
+    void writeUsMonthlyHistory(ticker, complete, US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
+    return complete;
+  }
+  // Alpha Vantage remains a fallback when Yahoo is unavailable. Keep its
+  // adjusted series isolated rather than merging it with split-adjusted rows.
+  const alphaVantageMonthly = await fetchAlphaVantageUsMonthlyChart(ticker.code).catch(() => []);
+  if (alphaVantageMonthly.length >= 241) {
+    const complete = [...new Map(alphaVantageMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
+      .sort((left, right) => left.localDate.localeCompare(right.localDate));
+    void writeUsMonthlyHistory(ticker, complete, "alpha-vantage-adjusted");
     return complete;
   }
   const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType).catch(() => []);
