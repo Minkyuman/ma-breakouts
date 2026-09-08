@@ -22,6 +22,8 @@ test("Phase 2 trusts server quotes and settles atomically with exact decimals", 
   assert.match(trading, /priceSnapshots/);
   assert.match(trading, /fxSnapshots/);
   assert.match(trading, /quote\.ticker\.assetType !== "ETF"/);
+  assert.match(trading, /\^\[A-Z0-9\]\{6\}\$/);
+  assert.match(trading, /TIGER 코리아휴머노이드로봇산업: 0148J0/);
   assert.match(route, /executeTrade\(user/);
   assert.doesNotMatch(trading, /input\.(?:price|fxRate|cash|equity)/);
   assert.match(market, /fetchTradingQuote/);

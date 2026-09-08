@@ -51,7 +51,12 @@ function normalizeItem(input: Record<string, unknown>) {
   const market = typeof input.market === "string" ? input.market.trim().toUpperCase() as Market : "" as Market;
   const assetType = typeof input.assetType === "string" ? input.assetType.trim().toUpperCase() as AssetType : "STOCK";
   const nativeCurrency = market === "KOSPI" || market === "KOSDAQ" ? "KRW" : "USD";
-  const validSymbol = /^\d{6}$/u.test(symbol) || /^[A-Z][A-Z0-9.-]{0,15}$/u.test(symbol);
+  // KRX ETF/ETN codes can contain letters (e.g. 0148J0), unlike the former
+  // six-digit-only convention. Keep favorites aligned with chart and trading.
+  const isKoreanMarket = market === "KOSPI" || market === "KOSDAQ";
+  const validSymbol = isKoreanMarket
+    ? /^[A-Z0-9]{6}$/u.test(symbol)
+    : /^[A-Z][A-Z0-9.-]{0,15}$/u.test(symbol);
   if (!validSymbol || !securityName || securityName.length > 160 || !VALID_MARKETS.has(market) || !VALID_ASSET_TYPES.has(assetType)) {
     throw new FavoriteError("INVALID_INPUT", "즐겨찾기에 추가할 종목 정보를 확인해 주세요.");
   }

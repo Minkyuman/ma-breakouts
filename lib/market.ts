@@ -830,6 +830,8 @@ const usChartRequests = new Map<string, Promise<DailyRow[]>>();
 let usMonthlyHistoryStorageRequest: Promise<void> | null = null;
 let usWeeklyHistoryStorageRequest: Promise<void> | null = null;
 
+// Kept as an operational recovery helper; migrations provision this in normal requests.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function ensureUsMonthlyHistoryStorage() {
   if (usMonthlyHistoryStorageRequest) return usMonthlyHistoryStorageRequest;
   usMonthlyHistoryStorageRequest = (async () => {
@@ -860,6 +862,8 @@ async function ensureUsMonthlyHistoryStorage() {
   return usMonthlyHistoryStorageRequest;
 }
 
+// Kept as an operational recovery helper; migrations provision this in normal requests.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function ensureUsWeeklyHistoryStorage() {
   if (usWeeklyHistoryStorageRequest) return usWeeklyHistoryStorageRequest;
   usWeeklyHistoryStorageRequest = (async () => {
@@ -1019,6 +1023,7 @@ async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "marke
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Promise<DailyRow[]> {
   return (await readUsMonthlyHistorySnapshot(ticker)).rows;
 }
@@ -1082,6 +1087,8 @@ async function writeUsWeeklyHistory(ticker: Pick<Ticker, "code" | "market">, row
   }
 }
 
+// Fallback retained for provider recovery; Spark is the normal monthly source.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function fetchYahooUsMonthlyChart(code: string): Promise<DailyRow[]> {
   // Twenty-one years gives enough buffer for MA240 and a previous-period
   // comparison while keeping the Yahoo request small enough to avoid the

@@ -138,7 +138,14 @@ function normalizeIntent(input: Record<string, unknown>) {
   const clientOrderId = typeof input.clientOrderId === "string" ? input.clientOrderId.trim() : "";
   const tradeNote = normalizeTradeNote(input.tradeNote);
   const validMarket = ["KOSPI", "KOSDAQ", "NASDAQ", "NYSE", "AMEX", "US_ETF"].includes(market);
-  const validSymbol = /^\d{6}$/u.test(symbol) || /^[A-Z][A-Z0-9.-]{0,15}$/u.test(symbol);
+  // Since 2025, KRX may assign newly listed ETFs/ETNs a six-character code
+  // containing a letter (for example, TIGER 코리아휴머노이드로봇산업: 0148J0).
+  // The chart/search APIs already accept this format; the trade gateway must
+  // use the same domestic-code rule or valid ETFs are rejected before quote lookup.
+  const isKoreanMarket = market === "KOSPI" || market === "KOSDAQ";
+  const validSymbol = isKoreanMarket
+    ? /^[A-Z0-9]{6}$/u.test(symbol)
+    : /^[A-Z][A-Z0-9.-]{0,15}$/u.test(symbol);
 
   if (
     !validSymbol ||
