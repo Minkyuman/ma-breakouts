@@ -1134,7 +1134,32 @@ async function fetchYahooUsMonthlyChart(code: string): Promise<DailyRow[]> {
   });
 }
 
-async function fetchAlphaVantageUsMonthlyChart(code: string): Promise<DailyRow[]> {
+async function fetchYahooUsMonthlyCloses(code: string): Promise<DailyRow[]> {
+  // Yahoo's Spark endpoint is materially less prone to the chart endpoint's
+  // burst limit. It provides the same split-adjusted close series used for
+  // the MA calculation, which is the authoritative value here.
+  type YahooSparkPayload = {
+    spark?: { result?: Array<{ response?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ close?: Array<number | null> }> } }> }> };
+  };
+  const payload = await fetchUsJson<YahooSparkPayload>(
+    `https://query1.finance.yahoo.com/v7/finance/spark?symbols=${encodeURIComponent(code)}&range=21y&interval=1mo`,
+  );
+  const result = payload.spark?.result?.[0]?.response?.[0];
+  const closes = result?.indicators?.quote?.[0]?.close;
+  const timestamps = result?.timestamp ?? [];
+  if (!closes?.length || !timestamps.length) return [];
+  return timestamps.flatMap((timestamp, index) => {
+    const close = closes[index];
+    if (typeof close !== "number" || !Number.isFinite(close) || close <= 0) return [];
+    const date = new Date(timestamp * 1_000);
+    const localDate = `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}`;
+    // Spark is the price authority. Alpha's raw OHLC is merged below solely
+    // to preserve candlestick bodies and wicks in the chart.
+    return [{ localDate, openPrice: close, highPrice: close, lowPrice: close, closePrice: close, accumulatedTradingVolume: 0 }];
+  });
+}
+
+async function fetchAlphaVantageUsMonthlyChart(code: string, closeOverrides?: Map<string, number>): Promise<DailyRow[]> {
   const apiKey = process.env.ALPHA_VANTAGE_API_KEY?.trim();
   if (!apiKey) return [];
   const payload = await fetchUsJson<{
@@ -1156,13 +1181,17 @@ async function fetchAlphaVantageUsMonthlyChart(code: string): Promise<DailyRow[]
     const high = numeric(value["2. high"]);
     const low = numeric(value["3. low"]);
     const rawClose = numeric(value["4. close"]);
-    const close = numeric(value["5. adjusted close"]) || rawClose;
+    const adjustedClose = numeric(value["5. adjusted close"]) || rawClose;
+    const localDate = date.replaceAll("-", "");
+    // Technical indicators must use a split/dividend-adjusted series only when
+    // the provider's convention requires it. When Yahoo supplies a close, use it as the price basis and rescale the
+    // raw Alpha OHLC proportionally. This retains real candle geometry without
+    // using dividend-reinvested prices for MA240.
+    const close = closeOverrides?.get(localDate.slice(0, 6)) ?? adjustedClose;
     if (Math.min(open, high, low, rawClose, close) <= 0) return [];
-    // Technical indicators must use a split/dividend-adjusted series. Scale
-    // OHLC by the same factor so candles and moving averages stay on one axis.
     const adjustment = rawClose > 0 ? close / rawClose : 1;
     return [{
-      localDate: date.replaceAll("-", ""),
+      localDate,
       openPrice: open * adjustment,
       highPrice: high * adjustment,
       lowPrice: low * adjustment,
@@ -1189,9 +1218,15 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
     usMonthlySourceByCode.set(ticker.code.toUpperCase(), US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
     return cached;
   }
-  const yahooMonthly = await fetchYahooUsMonthlyChart(ticker.code).catch(() => []);
+  const yahooMonthly = await fetchYahooUsMonthlyCloses(ticker.code).catch(() => []);
   if (yahooMonthly.length >= 241) {
-    const complete = [...new Map(yahooMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
+    const yahooCloseByMonth = new Map(yahooMonthly.map((row) => [row.localDate.slice(0, 6), Number(row.closePrice)]));
+    const alphaOhlc = await fetchAlphaVantageUsMonthlyChart(ticker.code, yahooCloseByMonth).catch(() => []);
+    const alphaOhlcByMonth = new Map(alphaOhlc.map((row) => [row.localDate.slice(0, 6), row]));
+    const complete = [...new Map(yahooMonthly.map((row) => {
+      const month = row.localDate.slice(0, 6);
+      return [month, alphaOhlcByMonth.get(month) ?? row] as const;
+    })).values()]
       .sort((left, right) => left.localDate.localeCompare(right.localDate));
     await writeUsMonthlyHistory(ticker, complete, US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
     usMonthlySourceByCode.set(ticker.code.toUpperCase(), US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
