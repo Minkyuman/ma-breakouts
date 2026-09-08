@@ -15,6 +15,8 @@ test("US monthly screening history is durably cached for MA10 and MA240", async 
   assert.match(market, /export async function fetchUsMonthlyChart/);
   assert.match(market, /query1\.finance\.yahoo\.com\/v8\/finance\/chart/);
   assert.match(market, /TIME_SERIES_MONTHLY_ADJUSTED/);
+  assert.match(market, /5\. adjusted close/);
+  assert.match(market, /Technical indicators must use a split\/dividend-adjusted series/);
   assert.match(market, /usMonthlyHistory/);
   assert.match(market, /fetchUsMonthlyScreenChart/);
   assert.match(market, /fetchUsWeeklyScreenChart/);

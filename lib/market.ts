@@ -968,7 +968,7 @@ export async function fetchTickerDailyChart(ticker: Pick<Ticker, "code" | "marke
     : fetchUsDailyChart(ticker.code, years, ticker.assetType, useCache);
 }
 
-type UsMonthlyHistorySnapshot = { rows: DailyRow[]; fetchedAt: Date | null };
+type UsMonthlyHistorySnapshot = { rows: DailyRow[]; fetchedAt: Date | null; source?: string | null };
 
 async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
   try {
@@ -985,7 +985,11 @@ async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "marke
     const fetchedAt = rawFetchedAt instanceof Date
       ? rawFetchedAt
       : rawFetchedAt ? new Date(String(rawFetchedAt)) : null;
-    return { rows: history, fetchedAt: fetchedAt && !Number.isNaN(fetchedAt.getTime()) ? fetchedAt : null };
+    return {
+      rows: history,
+      fetchedAt: fetchedAt && !Number.isNaN(fetchedAt.getTime()) ? fetchedAt : null,
+      source: String(rows.at(-1)?.source ?? "") || null,
+    };
   } catch {
     return { rows: [], fetchedAt: null };
   }
@@ -1088,6 +1092,7 @@ async function fetchAlphaVantageUsMonthlyChart(code: string): Promise<DailyRow[]
       "2. high"?: string;
       "3. low"?: string;
       "4. close"?: string;
+      "5. adjusted close"?: string;
       "6. volume"?: string;
     }>;
   }>(`https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol=${encodeURIComponent(code)}&apikey=${encodeURIComponent(apiKey)}`);
@@ -1097,13 +1102,17 @@ async function fetchAlphaVantageUsMonthlyChart(code: string): Promise<DailyRow[]
     const open = numeric(value["1. open"]);
     const high = numeric(value["2. high"]);
     const low = numeric(value["3. low"]);
-    const close = numeric(value["4. close"]);
-    if (Math.min(open, high, low, close) <= 0) return [];
+    const rawClose = numeric(value["4. close"]);
+    const close = numeric(value["5. adjusted close"]) || rawClose;
+    if (Math.min(open, high, low, rawClose, close) <= 0) return [];
+    // Technical indicators must use a split/dividend-adjusted series. Scale
+    // OHLC by the same factor so candles and moving averages stay on one axis.
+    const adjustment = rawClose > 0 ? close / rawClose : 1;
     return [{
       localDate: date.replaceAll("-", ""),
-      openPrice: open,
-      highPrice: high,
-      lowPrice: low,
+      openPrice: open * adjustment,
+      highPrice: high * adjustment,
+      lowPrice: low * adjustment,
       closePrice: close,
       accumulatedTradingVolume: numeric(value["6. volume"]),
     }];
@@ -1111,14 +1120,17 @@ async function fetchAlphaVantageUsMonthlyChart(code: string): Promise<DailyRow[]
 }
 
 export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market" | "assetType">): Promise<DailyRow[]> {
-  const cached = await fallbackAfter(readUsMonthlyHistory(ticker), [], 8_000);
+  const cachedSnapshot = await fallbackAfter(readUsMonthlyHistorySnapshot(ticker), { rows: [], fetchedAt: null }, 8_000);
+  const cached = cachedSnapshot.rows;
   // Alpha Vantage's free monthly endpoint has a tight daily quota. Once a
   // security has enough persisted history for MA240, keep chart reads local.
-  if (cached.length >= 241) return cached;
+  // The adjusted source marker also invalidates the pre-existing raw-close
+  // cache, which would otherwise produce incorrect values after stock splits.
+  if (cached.length >= 241 && cachedSnapshot.source === "alpha-vantage-adjusted") return cached;
   const alphaVantageMonthly = await fetchAlphaVantageUsMonthlyChart(ticker.code).catch(() => []);
   if (alphaVantageMonthly.length >= 241) {
     const complete = [...new Map([...cached, ...alphaVantageMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
-    void writeUsMonthlyHistory(ticker, complete, "alpha-vantage");
+    void writeUsMonthlyHistory(ticker, complete, "alpha-vantage-adjusted");
     return complete;
   }
   const yahooMonthly = await fetchYahooUsMonthlyChart(ticker.code).catch(() => []);
