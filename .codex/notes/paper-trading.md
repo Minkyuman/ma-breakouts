@@ -238,6 +238,11 @@ Exit: no P0/P1 defects, production backup verified, season reset tested, and sim
 - Replayed idempotency keys return the original receipt; a key reused for a different intent is rejected.
 - Quotes older than eight days and FX snapshots older than five days are rejected. Every receipt records quote/FX sources and timestamps so delayed data is visible.
 - Added authenticated `GET/POST /api/game/orders` and `GET /api/game/portfolio` routes plus holdings, recent fills, two-step trade confirmation, and server-calculated receipt UI.
+
+## US ETF venue compatibility (2026-09-08)
+
+- The curated US ETF universe uses the canonical `US_ETF` market label. Older search-index or favorite records can still carry `NASDAQ`, `NYSE`, or `AMEX` as the market label.
+- `fetchTradingQuote` now resolves those legacy venue-labelled symbols against the curated ETF universe while preserving the caller's market in the quote identity, so existing ETF selections remain tradable without weakening server-side quote validation.
 - Development integration verification proved concurrent overspend and oversell protection, replay idempotency, exact USD/KRW conversion, stale-quote rejection, ledger reconciliation, and email omission; all test records are removed in `finally`.
 - Phase 3 will add independently refreshed position valuation, leaderboard snapshots, public player portfolios, and activity. Until then, cached equity is updated from the latest execution and saved position snapshots.
 
