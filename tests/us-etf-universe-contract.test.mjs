@@ -15,6 +15,8 @@ test("US screening has a curated liquid ETF universe and uses Nasdaq ETF history
   assert.match(market, /assetclass=\$\{assetType === "ETF" \? "etf" : "stocks"\}/);
   assert.match(market, /if \(assetFilter === "etp"\) return fetchUsMajorEtfs\(\)/);
   assert.match(market, /fetchUsUniverse\("all", "all"\)/);
+  assert.match(market, /const isUsVenue = marketValue === "NASDAQ"/);
+  assert.match(market, /const legacyEtf = \(await fetchUsUniverse\("all", "etp"\)\)/);
   assert.match(market, /const US_CHART_CACHE_MS = 5 \* 60_000/);
   assert.match(market, /const KOREAN_CHART_CACHE_MS = 5 \* 60_000/);
   assert.match(market, /fetchTickerDailyChart\(ticker, 1, false\)/);
