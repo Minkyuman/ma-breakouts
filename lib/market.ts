@@ -1144,7 +1144,15 @@ async function fetchYahooUsMonthlyCloses(code: string): Promise<DailyRow[]> {
   const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/spark?symbols=${encodeURIComponent(code)}&range=21y&interval=1mo`;
   let payload: YahooSparkPayload;
   try {
-    payload = await fetchUsJson<YahooSparkPayload>(yahooUrl);
+    // Do not spend the chart request's full timeout on two throttled Yahoo
+    // hosts. Spark either responds promptly or the proxy is the better path.
+    const response = await fetch(yahooUrl, {
+      headers: US_HEADERS,
+      cache: "default",
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!response.ok) throw new Error(`Yahoo Spark failed (${response.status})`);
+    payload = (await response.json()) as YahooSparkPayload;
   } catch {
     // Vercel's shared egress address can be throttled by Yahoo even while the
     // same public series is available elsewhere. Jina is used only as a read
@@ -1152,7 +1160,7 @@ async function fetchYahooUsMonthlyCloses(code: string): Promise<DailyRow[]> {
     const proxyResponse = await fetch(`https://r.jina.ai/http://${yahooUrl.replace(/^https:\/\//u, "")}`, {
       headers: { accept: "text/plain", "user-agent": US_HEADERS["user-agent"] },
       cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(18_000),
     });
     if (!proxyResponse.ok) throw new Error(`Yahoo monthly proxy failed (${proxyResponse.status})`);
     const body = await proxyResponse.text();
@@ -1238,11 +1246,28 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
   const yahooMonthly = await fetchYahooUsMonthlyCloses(ticker.code).catch(() => []);
   if (yahooMonthly.length >= 241) {
     const yahooCloseByMonth = new Map(yahooMonthly.map((row) => [row.localDate.slice(0, 6), Number(row.closePrice)]));
-    const alphaOhlc = await fetchAlphaVantageUsMonthlyChart(ticker.code, yahooCloseByMonth).catch(() => []);
+    // A prior Alpha series is already persisted for most affected symbols.
+    // Rescale it to Yahoo's close to retain candle bodies/wicks without adding
+    // another provider round-trip to the long monthly chart request.
+    const cachedOhlcByMonth = new Map(cached.map((row) => [row.localDate.slice(0, 6), row]));
+    const alphaOhlc = cachedOhlcByMonth.size >= 241
+      ? []
+      : await fetchAlphaVantageUsMonthlyChart(ticker.code, yahooCloseByMonth).catch(() => []);
     const alphaOhlcByMonth = new Map(alphaOhlc.map((row) => [row.localDate.slice(0, 6), row]));
     const complete = [...new Map(yahooMonthly.map((row) => {
       const month = row.localDate.slice(0, 6);
-      return [month, alphaOhlcByMonth.get(month) ?? row] as const;
+      const ohlc = cachedOhlcByMonth.get(month) ?? alphaOhlcByMonth.get(month);
+      if (!ohlc) return [month, row] as const;
+      const close = Number(row.closePrice);
+      const baseClose = Number(ohlc.closePrice);
+      const scale = baseClose > 0 ? close / baseClose : 1;
+      return [month, {
+        ...ohlc,
+        openPrice: Number(ohlc.openPrice) * scale,
+        highPrice: Number(ohlc.highPrice) * scale,
+        lowPrice: Number(ohlc.lowPrice) * scale,
+        closePrice: close,
+      }] as const;
     })).values()]
       .sort((left, right) => left.localDate.localeCompare(right.localDate));
     await writeUsMonthlyHistory(ticker, complete, US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
