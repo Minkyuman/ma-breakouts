@@ -4,6 +4,7 @@ import {
   aggregateCandles,
   fetchTickerDailyChart,
   fetchUsMonthlyChart,
+  getUsMonthlySource,
   fetchUsdKrwRate,
   fetchNasdaq100Membership,
   fetchSecurityClassification,
@@ -86,8 +87,12 @@ export async function GET(request: Request) {
       weekly: summarizeChange(aggregateCandles(changesDaily, "weekly")),
       monthly: summarizeChange(aggregateCandles(changesDaily, "monthly")),
     };
+    if (usesCachedUsMonthly) {
+      const latest = points.at(-1);
+      console.info(JSON.stringify({ service: "chart", event: "us_monthly_source", code, source: getUsMonthlySource(code), rows: points.length, latestClose: latest?.close ?? null, latestMa240: latest?.ma240 ?? null }));
+    }
     return NextResponse.json(
-      { points: points.slice(-360), timeframe, movingAverages: [5, 10, 240], changes, currency: isKoreanMarket ? "KRW" : "USD", exchangeRate, isNasdaq100, classification },
+      { points: points.slice(-360), timeframe, movingAverages: [5, 10, 240], changes, currency: isKoreanMarket ? "KRW" : "USD", exchangeRate, isNasdaq100, classification, monthlySource: usesCachedUsMonthly ? getUsMonthlySource(code) : null },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (error) {

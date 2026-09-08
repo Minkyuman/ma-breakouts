@@ -985,6 +985,11 @@ type UsMonthlyHistorySnapshot = { rows: DailyRow[]; fetchedAt: Date | null; sour
 // `adjusted close`, does not reinvest dividends. This is the conventional
 // price series used by charting apps for moving-average calculations.
 const US_MONTHLY_SPLIT_ADJUSTED_SOURCE = "yahoo-split-adjusted";
+const usMonthlySourceByCode = new Map<string, string>();
+
+export function getUsMonthlySource(code: string): string | null {
+  return usMonthlySourceByCode.get(code.toUpperCase()) ?? null;
+}
 
 async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
   try {
@@ -1180,12 +1185,16 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
   // Keep the durable history, but revalidate the current (in-progress) month
   // periodically so a chart opened after a new month starts does not remain on
   // the prior month's close forever.
-  if (canonicalCacheIsFresh) return cached;
+  if (canonicalCacheIsFresh) {
+    usMonthlySourceByCode.set(ticker.code.toUpperCase(), US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
+    return cached;
+  }
   const yahooMonthly = await fetchYahooUsMonthlyChart(ticker.code).catch(() => []);
   if (yahooMonthly.length >= 241) {
     const complete = [...new Map(yahooMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
       .sort((left, right) => left.localDate.localeCompare(right.localDate));
     await writeUsMonthlyHistory(ticker, complete, US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
+    usMonthlySourceByCode.set(ticker.code.toUpperCase(), US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
     return complete;
   }
   // Alpha Vantage remains a fallback when Yahoo is unavailable. Keep its
@@ -1195,12 +1204,16 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
     const complete = [...new Map(alphaVantageMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
       .sort((left, right) => left.localDate.localeCompare(right.localDate));
     await writeUsMonthlyHistory(ticker, complete, "alpha-vantage-adjusted");
+    usMonthlySourceByCode.set(ticker.code.toUpperCase(), "alpha-vantage-adjusted");
     return complete;
   }
   // A provider outage must never replace a known-good split-adjusted series
   // with Alpha's dividend-adjusted fallback. Serve the last canonical cache
   // until Yahoo can be revalidated.
-  if (hasCanonicalCache) return cached;
+  if (hasCanonicalCache) {
+    usMonthlySourceByCode.set(ticker.code.toUpperCase(), US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
+    return cached;
+  }
   const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType).catch(() => []);
   const freshMonthly = aggregateCandles(current, "monthly").map((candle) => ({ localDate: candle.date.replaceAll("-", ""), openPrice: candle.open, highPrice: candle.high, lowPrice: candle.low, closePrice: candle.close, accumulatedTradingVolume: candle.volume }));
   const merged = [...new Map([...cached, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
