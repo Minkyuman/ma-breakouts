@@ -128,6 +128,10 @@ function optionalNumeric(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function pause(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: NAVER_HEADERS,
@@ -156,6 +160,7 @@ async function fetchUsJson<T>(url: string): Promise<T> {
       });
       if (response.ok) return (await response.json()) as T;
       lastStatus = response.status;
+      if (response.status === 429) await pause(350);
     } catch {
       lastStatus = 599;
     }
@@ -1101,6 +1106,9 @@ async function fetchYahooUsMonthlyChart(code: string): Promise<DailyRow[]> {
         }
       } catch {
         // Try the alternate cache key/query shape before falling back.
+        // A burst from a screening run can briefly trip Yahoo's edge limit;
+        // space the next cache key so the valid series has a chance to load.
+        await pause(250);
       }
     }
     if (payload) break;
