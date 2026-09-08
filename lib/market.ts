@@ -1230,17 +1230,27 @@ export async function fetchTradingQuote(
 ): Promise<TradingQuote> {
   const symbol = symbolValue.trim().toUpperCase();
   const isKoreanMarket = marketValue === "KOSPI" || marketValue === "KOSDAQ";
+  const isUsVenue = marketValue === "NASDAQ" || marketValue === "NYSE" || marketValue === "AMEX";
   const candidates = isKoreanMarket
     ? await fetchUniverse(marketValue.toLowerCase() as MarketFilter, "all")
     : marketValue === "US_ETF"
       ? await fetchUsUniverse("all", "etp")
       : await fetchUsUniverse(marketValue.toLowerCase() as MarketFilter, "stock");
-  const ticker = candidates.find(
+  let ticker = candidates.find(
     (candidate) =>
       candidate.code === symbol &&
       candidate.market === marketValue &&
       (candidate.assetType === "STOCK" || candidate.assetType === "ETF"),
   );
+  // Before US ETFs received the canonical `US_ETF` market label, some search
+  // index/favorite records retained the listing venue (NASDAQ/NYSE/AMEX).
+  // Resolve those legacy records against the curated ETF universe so an ETF
+  // selected from an older result can still be traded. Keep the caller's
+  // market on the returned ticker so the quote identity check remains exact.
+  if (!ticker && isUsVenue) {
+    const legacyEtf = (await fetchUsUniverse("all", "etp")).find((candidate) => candidate.code === symbol);
+    if (legacyEtf) ticker = { ...legacyEtf, market: marketValue };
+  }
   if (!ticker) {
     throw new MarketQuoteError(
       "UNSUPPORTED_SECURITY",
