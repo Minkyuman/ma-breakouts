@@ -1141,9 +1141,26 @@ async function fetchYahooUsMonthlyCloses(code: string): Promise<DailyRow[]> {
   type YahooSparkPayload = {
     spark?: { result?: Array<{ response?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ close?: Array<number | null> }> } }> }> };
   };
-  const payload = await fetchUsJson<YahooSparkPayload>(
-    `https://query1.finance.yahoo.com/v7/finance/spark?symbols=${encodeURIComponent(code)}&range=21y&interval=1mo`,
-  );
+  const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/spark?symbols=${encodeURIComponent(code)}&range=21y&interval=1mo`;
+  let payload: YahooSparkPayload;
+  try {
+    payload = await fetchUsJson<YahooSparkPayload>(yahooUrl);
+  } catch {
+    // Vercel's shared egress address can be throttled by Yahoo even while the
+    // same public series is available elsewhere. Jina is used only as a read
+    // proxy for this public, symbol-only response; no user data is sent.
+    const proxyResponse = await fetch(`https://r.jina.ai/http://${yahooUrl.replace(/^https:\/\//u, "")}`, {
+      headers: { accept: "text/plain", "user-agent": US_HEADERS["user-agent"] },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!proxyResponse.ok) throw new Error(`Yahoo monthly proxy failed (${proxyResponse.status})`);
+    const body = await proxyResponse.text();
+    const start = body.indexOf('{"spark"');
+    const end = body.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("Yahoo monthly proxy returned no JSON payload");
+    payload = JSON.parse(body.slice(start, end + 1)) as YahooSparkPayload;
+  }
   const result = payload.spark?.result?.[0]?.response?.[0];
   const closes = result?.indicators?.quote?.[0]?.close;
   const timestamps = result?.timestamp ?? [];
