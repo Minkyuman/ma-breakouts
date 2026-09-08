@@ -983,6 +983,7 @@ const US_MONTHLY_SPLIT_ADJUSTED_SOURCE = "yahoo-split-adjusted";
 
 async function readUsMonthlyHistorySnapshot(ticker: Pick<Ticker, "code" | "market">): Promise<UsMonthlyHistorySnapshot> {
   try {
+    await ensureUsMonthlyHistoryStorage();
     const rows = await getDb().select().from(usMonthlyHistory)
       .where(and(eq(usMonthlyHistory.market, ticker.market), eq(usMonthlyHistory.code, ticker.code.toUpperCase())))
       .orderBy(sql`${usMonthlyHistory.period} asc`);
@@ -1013,6 +1014,7 @@ async function readUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">): Pr
 async function writeUsMonthlyHistory(ticker: Pick<Ticker, "code" | "market">, rows: DailyRow[], source = "nasdaq") {
   if (!rows.length) return;
   try {
+    await ensureUsMonthlyHistoryStorage();
     const now = new Date();
     await getDb().insert(usMonthlyHistory).values(rows.map((row) => ({
       market: ticker.market,
@@ -1076,21 +1078,32 @@ async function fetchYahooUsMonthlyChart(code: string): Promise<DailyRow[]> {
   type YahooMonthlyPayload = {
     chart?: { result?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ open?: Array<number | null>; high?: Array<number | null>; low?: Array<number | null>; close?: Array<number | null>; volume?: Array<number | null> }> } }> };
   };
-  const baseUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?range=21y&interval=1mo&events=history`;
+  const symbol = encodeURIComponent(code);
+  const nowSeconds = Math.floor(Date.now() / 1_000);
+  const baseUrls = [
+    `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=21y&interval=1mo&events=history`,
+    // Yahoo sometimes rate-limits the range form independently from an
+    // explicit period window. Keep both query shapes available so a single
+    // busy cache key does not force the Alpha fallback.
+    `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=0&period2=${nowSeconds}&interval=1mo&events=history`,
+  ];
   let payload: YahooMonthlyPayload | null = null;
   // A harmless query variation gives Yahoo's edge cache a second route when
   // one cached URL is temporarily returning HTTP 429 for a busy scan.
   const cacheBust = Date.now().toString(36);
-  for (const suffix of ["", "&crumb=x", `&cb=${cacheBust}`]) {
-    try {
-      const candidate = await fetchUsJson<YahooMonthlyPayload>(`${baseUrl}${suffix}`);
-      if (candidate.chart?.result?.[0]) {
-        payload = candidate;
-        break;
+  for (const baseUrl of baseUrls) {
+    for (const suffix of ["", "&crumb=x", `&cb=${cacheBust}`]) {
+      try {
+        const candidate = await fetchUsJson<YahooMonthlyPayload>(`${baseUrl}${suffix}`);
+        if (candidate.chart?.result?.[0]) {
+          payload = candidate;
+          break;
+        }
+      } catch {
+        // Try the alternate cache key/query shape before falling back.
       }
-    } catch {
-      // Try the alternate cache key before falling back to Alpha Vantage.
     }
+    if (payload) break;
   }
   const result = payload?.chart?.result?.[0];
   const quote = result?.indicators?.quote?.[0];

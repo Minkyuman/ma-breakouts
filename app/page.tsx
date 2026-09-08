@@ -2518,6 +2518,9 @@ function Dashboard({ authUser }: { authUser: AuthUser }) {
       : `/api/chart?code=${selected.code}&name=${encodeURIComponent(selected.name)}&market=${selected.market}&asset=${selected.assetType}&timeframe=${chartTimeframe}`;
     fetch(endpoint, {
       signal: controller.signal,
+      // A chart response can change when the provider/cache has been
+      // revalidated. Do not let the browser reuse an older API payload.
+      cache: "no-store",
     })
       .then(async (response) => {
         if (!response.ok) throw new Error("차트를 불러오지 못했습니다.");
