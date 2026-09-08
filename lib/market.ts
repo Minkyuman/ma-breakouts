@@ -1166,7 +1166,13 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
   // Alpha Vantage's adjusted close also removes dividends, which can move a
   // dividend-heavy stock's MA240 far below the price shown on normal charts.
   // The source marker invalidates the earlier Alpha/raw cache exactly once.
-  if (cached.length >= 241 && cachedSnapshot.source === US_MONTHLY_SPLIT_ADJUSTED_SOURCE) return cached;
+  const hasCanonicalCache = cached.length >= 241 && cachedSnapshot.source === US_MONTHLY_SPLIT_ADJUSTED_SOURCE;
+  const canonicalCacheIsFresh = hasCanonicalCache && cachedSnapshot.fetchedAt !== null
+    && Date.now() - cachedSnapshot.fetchedAt.getTime() < US_SCREEN_LIVE_CANDLE_CACHE_MS;
+  // Keep the durable history, but revalidate the current (in-progress) month
+  // periodically so a chart opened after a new month starts does not remain on
+  // the prior month's close forever.
+  if (canonicalCacheIsFresh) return cached;
   const yahooMonthly = await fetchYahooUsMonthlyChart(ticker.code).catch(() => []);
   if (yahooMonthly.length >= 241) {
     const complete = [...new Map(yahooMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
@@ -1177,12 +1183,16 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
   // Alpha Vantage remains a fallback when Yahoo is unavailable. Keep its
   // adjusted series isolated rather than merging it with split-adjusted rows.
   const alphaVantageMonthly = await fetchAlphaVantageUsMonthlyChart(ticker.code).catch(() => []);
-  if (alphaVantageMonthly.length >= 241) {
+  if (alphaVantageMonthly.length >= 241 && !hasCanonicalCache) {
     const complete = [...new Map(alphaVantageMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
       .sort((left, right) => left.localDate.localeCompare(right.localDate));
     await writeUsMonthlyHistory(ticker, complete, "alpha-vantage-adjusted");
     return complete;
   }
+  // A provider outage must never replace a known-good split-adjusted series
+  // with Alpha's dividend-adjusted fallback. Serve the last canonical cache
+  // until Yahoo can be revalidated.
+  if (hasCanonicalCache) return cached;
   const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType).catch(() => []);
   const freshMonthly = aggregateCandles(current, "monthly").map((candle) => ({ localDate: candle.date.replaceAll("-", ""), openPrice: candle.open, highPrice: candle.high, lowPrice: candle.low, closePrice: candle.close, accumulatedTradingVolume: candle.volume }));
   const merged = [...new Map([...cached, ...freshMonthly].map((row) => [row.localDate.slice(0, 6), row])).values()].sort((left, right) => left.localDate.localeCompare(right.localDate));
