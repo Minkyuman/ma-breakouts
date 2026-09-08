@@ -146,7 +146,14 @@ async function fetchUsJson<T>(url: string): Promise<T> {
   let lastStatus = 0;
   for (const endpoint of urls) {
     try {
-      const response = await fetch(endpoint, { headers: US_HEADERS, cache: "no-store", signal: AbortSignal.timeout(12_000) });
+      // Yahoo's chart edge cache is useful for repeated monthly-history reads;
+      // forcing no-store there can turn a burst of screening requests into
+      // avoidable HTTP 429 responses. Other market providers remain uncached.
+      const response = await fetch(endpoint, {
+        headers: US_HEADERS,
+        cache: endpoint.includes("query1.finance.yahoo.com") || endpoint.includes("query2.finance.yahoo.com") ? "default" : "no-store",
+        signal: AbortSignal.timeout(12_000),
+      });
       if (response.ok) return (await response.json()) as T;
       lastStatus = response.status;
     } catch {
@@ -1063,13 +1070,29 @@ async function writeUsWeeklyHistory(ticker: Pick<Ticker, "code" | "market">, row
 }
 
 async function fetchYahooUsMonthlyChart(code: string): Promise<DailyRow[]> {
-  const endSeconds = Math.floor(Date.now() / 1_000);
-  // 26 years gives enough buffer for MA240 and for a previous-period comparison.
-  const startSeconds = Math.floor(Date.UTC(new Date().getUTCFullYear() - 26, 0, 1) / 1_000);
-  const payload = await fetchUsJson<{
+  // Twenty-one years gives enough buffer for MA240 and a previous-period
+  // comparison while keeping the Yahoo request small enough to avoid the
+  // intermittent rate limits seen on very long monthly windows.
+  type YahooMonthlyPayload = {
     chart?: { result?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ open?: Array<number | null>; high?: Array<number | null>; low?: Array<number | null>; close?: Array<number | null>; volume?: Array<number | null> }> } }> };
-  }>(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?period1=${startSeconds}&period2=${endSeconds}&interval=1mo&events=history`);
-  const result = payload.chart?.result?.[0];
+  };
+  const baseUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?range=21y&interval=1mo&events=history`;
+  let payload: YahooMonthlyPayload | null = null;
+  // A harmless query variation gives Yahoo's edge cache a second route when
+  // one cached URL is temporarily returning HTTP 429 for a busy scan.
+  const cacheBust = Date.now().toString(36);
+  for (const suffix of ["", "&crumb=x", `&cb=${cacheBust}`]) {
+    try {
+      const candidate = await fetchUsJson<YahooMonthlyPayload>(`${baseUrl}${suffix}`);
+      if (candidate.chart?.result?.[0]) {
+        payload = candidate;
+        break;
+      }
+    } catch {
+      // Try the alternate cache key before falling back to Alpha Vantage.
+    }
+  }
+  const result = payload?.chart?.result?.[0];
   const quote = result?.indicators?.quote?.[0];
   const timestamps = result?.timestamp ?? [];
   if (!quote || !timestamps.length) return [];
@@ -1135,7 +1158,7 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
   if (yahooMonthly.length >= 241) {
     const complete = [...new Map(yahooMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
       .sort((left, right) => left.localDate.localeCompare(right.localDate));
-    void writeUsMonthlyHistory(ticker, complete, US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
+    await writeUsMonthlyHistory(ticker, complete, US_MONTHLY_SPLIT_ADJUSTED_SOURCE);
     return complete;
   }
   // Alpha Vantage remains a fallback when Yahoo is unavailable. Keep its
@@ -1144,7 +1167,7 @@ export async function fetchUsMonthlyChart(ticker: Pick<Ticker, "code" | "market"
   if (alphaVantageMonthly.length >= 241) {
     const complete = [...new Map(alphaVantageMonthly.map((row) => [row.localDate.slice(0, 6), row])).values()]
       .sort((left, right) => left.localDate.localeCompare(right.localDate));
-    void writeUsMonthlyHistory(ticker, complete, "alpha-vantage-adjusted");
+    await writeUsMonthlyHistory(ticker, complete, "alpha-vantage-adjusted");
     return complete;
   }
   const current = await fetchUsDailyChart(ticker.code, 2, ticker.assetType).catch(() => []);
